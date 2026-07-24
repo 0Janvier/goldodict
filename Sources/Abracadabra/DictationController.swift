@@ -11,8 +11,33 @@ import Observation
 @MainActor
 final class DictationController {
 
-    private(set) var state: DictationState = .idle
+    private(set) var state: DictationState = .idle {
+        didSet { reflectStateInOverlay() }
+    }
     private(set) var lastTranscript: String = ""
+
+    private let overlay = RecordingOverlay()
+    private var overlayDismissal: Task<Void, Never>?
+
+    /// La pastille flottante est le seul retour réellement visible : l'icône de la
+    /// barre des menus disparaît derrière le chevron dès que la barre est chargée.
+    private func reflectStateInOverlay() {
+        overlayDismissal?.cancel()
+
+        switch state {
+        case .idle:
+            overlay.hide()
+        case .recording, .transcribing, .injecting:
+            overlay.show(state: state)
+        case .failed:
+            overlay.show(state: state)
+            overlayDismissal = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled else { return }
+                self?.overlay.hide()
+            }
+        }
+    }
 
     /// Les vingt dernières dictées, en mémoire seule. Rien n'est écrit sur disque :
     /// ni l'audio, ni le texte, ce qui ferme la question du secret professionnel.
