@@ -45,34 +45,84 @@ final class AppleSpeechEngine: TranscriptionEngine {
         await session.cancel()
     }
 
+    /// Construit le module de transcription. Une fabrique unique, parce que
+    /// l'installation d'asset et la session doivent porter sur la même configuration.
+    ///
+    /// Le contenu des presets n'est pas documenté : l'initialiseur explicite est le
+    /// seul moyen de garantir l'émission des résultats volatils, sans lesquels rien
+    /// ne peut s'afficher pendant que l'utilisateur parle.
+    static func makeTranscriber(locale: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: []
+        )
+    }
+
     /// Vérifie la disponibilité du modèle pour une langue et le télécharge si besoin.
     /// Un modèle absent n'est pas une erreur : c'est un téléchargement à déclencher.
     static func prepareAssets(for locale: Locale) async throws {
         guard SpeechTranscriber.isAvailable else {
             throw TranscriptionEngineError.unavailable("Apple")
         }
-        let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
-        guard let supported else {
+        guard let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
             throw TranscriptionEngineError.localeUnsupported(locale.identifier)
         }
-
-        let transcriber = SpeechTranscriber(locale: supported, preset: .progressiveTranscription)
-        switch await AssetInventory.status(forModules: [transcriber]) {
-        case .installed:
-            break
-        case .unsupported:
-            throw TranscriptionEngineError.localeUnsupported(supported.identifier)
-        case .supported, .downloading:
-            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                try await request.downloadAndInstall()
-            }
-        @unknown default:
-            break
-        }
+        try await install(makeTranscriber(locale: supported), locale: supported)
 
         // Les modèles installés sont soumis à un quota ; la réservation garantit
         // que celui du français ne sera pas évincé au profit d'une autre langue.
-        _ = try? await AssetInventory.reserve(locale: supported)
+        do {
+            try await AssetInventory.reserve(locale: supported)
+        } catch {
+            // Sans effet sur la dictée du jour : une réservation refusée signifie
+            // seulement que le modèle pourra être évincé plus tard.
+            Log.engine.notice("réservation du modèle refusée : \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Rend le module utilisable, en installant l'asset de langue si nécessaire.
+    ///
+    /// **Le statut n'est pas persistant.** `AssetInventory` le rend pour le processus
+    /// courant : une installation faite au lancement couvre toutes les instances de la
+    /// session, mais tout retombe à `.supported` au processus suivant. La vérification
+    /// a donc lieu aussi à l'ouverture de chaque dictée, et pas seulement au démarrage.
+    ///
+    /// Toutes les branches sont tracées. La version précédente rendait la main en
+    /// silence quand `assetInstallationRequest` valait `nil`, si bien que l'échec ne se
+    /// manifestait qu'à la première dictée, treize minutes plus tard, sans rien dans le
+    /// journal pour dire ce qui avait été tenté.
+    static func install(_ transcriber: SpeechTranscriber, locale: Locale) async throws {
+        let name = locale.identifier(.bcp47)
+        let status = await AssetInventory.status(forModules: [transcriber])
+        Log.engine.notice("modèle \(name, privacy: .public) : statut \(String(describing: status), privacy: .public)")
+
+        switch status {
+        case .installed:
+            return
+        case .unsupported:
+            throw TranscriptionEngineError.localeUnsupported(name)
+        default:
+            break
+        }
+
+        // `nil` n'est pas un succès : le module n'est pas installé et le système
+        // n'offre rien pour l'installer. Le taire reviendrait à annoncer une
+        // préparation réussie puis à échouer au premier mot dicté.
+        guard let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) else {
+            Log.engine.error("modèle \(name, privacy: .public) : aucune requête d'installation disponible")
+            throw TranscriptionEngineError.assetsMissing(name)
+        }
+
+        Log.engine.notice("téléchargement du modèle \(name, privacy: .public)…")
+        try await request.downloadAndInstall()
+
+        let after = await AssetInventory.status(forModules: [transcriber])
+        Log.engine.notice("modèle \(name, privacy: .public) : statut après installation \(String(describing: after), privacy: .public)")
+        guard after == .installed else {
+            throw TranscriptionEngineError.assetsMissing(name)
+        }
     }
 }
 
@@ -88,7 +138,7 @@ private actor Session {
     private var rejectedBuffers = 0
 
     func preferredAudioFormat() async -> AVAudioFormat {
-        let probe = SpeechTranscriber(locale: Locale(identifier: "fr_FR"), preset: .progressiveTranscription)
+        let probe = AppleSpeechEngine.makeTranscriber(locale: Locale(identifier: "fr_FR"))
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probe])
             ?? AudioCapture.whisperFormat
         expectedFormat = format
@@ -109,18 +159,12 @@ private actor Session {
             throw TranscriptionEngineError.localeUnsupported(locale.identifier)
         }
 
-        // Le contenu des presets n'est pas documenté : l'initialiseur explicite est
-        // le seul moyen de garantir que les résultats volatils seront émis, sans
-        // lesquels rien ne peut s'afficher pendant que l'utilisateur parle.
-        let transcriber = SpeechTranscriber(
-            locale: supported,
-            transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
-            attributeOptions: []
-        )
-        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-            throw TranscriptionEngineError.assetsMissing(supported.identifier)
-        }
+        // L'installation est refaite ici, et pas seulement au lancement : le statut
+        // rendu par `AssetInventory` ne vaut que pour le processus courant. Elle est
+        // instantanée quand le modèle est déjà attaché. La capture, elle, tourne déjà
+        // et le relais conserve les tampons produits pendant ce temps.
+        let transcriber = AppleSpeechEngine.makeTranscriber(locale: supported)
+        try await AppleSpeechEngine.install(transcriber, locale: supported)
 
         let context = AnalysisContext()
         if !contextualStrings.isEmpty {
