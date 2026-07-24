@@ -2,24 +2,24 @@
 import PackageDescription
 
 let package = Package(
-    name: "Abracadabra",
+    name: "Goldodict",
     platforms: [.macOS("26.0")],
     targets: [
         .target(
-            name: "AbracadabraCore",
-            path: "Sources/AbracadabraCore",
+            name: "GoldodictCore",
+            path: "Sources/GoldodictCore",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
-            name: "Abracadabra",
-            dependencies: ["AbracadabraCore"],
-            path: "Sources/Abracadabra",
+            name: "Goldodict",
+            dependencies: ["GoldodictCore"],
+            path: "Sources/Goldodict",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
-            name: "AbracadabraCoreTests",
-            dependencies: ["AbracadabraCore"],
-            path: "Tests/AbracadabraCoreTests",
+            name: "GoldodictCoreTests",
+            dependencies: ["GoldodictCore"],
+            path: "Tests/GoldodictCoreTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

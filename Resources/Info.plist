@@ -3,13 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Abracadabra</string>
+	<string>Goldodict</string>
 	<key>CFBundleDisplayName</key>
-	<string>Abracadabra</string>
+	<string>Goldodict</string>
 	<key>CFBundleIdentifier</key>
-	<string>fr.sztulman.abracadabra</string>
+	<string>fr.sztulman.goldodict</string>
 	<key>CFBundleExecutable</key>
-	<string>Abracadabra</string>
+	<string>Goldodict</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -23,8 +25,8 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Marc Sztulman</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Abracadabra a besoin du microphone pour transcrire votre dictée. L'audio est traité localement sur cet ordinateur et n'est jamais transmis à un tiers.</string>
+	<string>Goldodict a besoin du microphone pour transcrire votre dictée. L'audio est traité localement sur cet ordinateur et n'est jamais transmis à un tiers.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Abracadabra utilise la reconnaissance vocale locale de macOS pour convertir votre dictée en texte. Aucune donnée ne quitte cet ordinateur.</string>
+	<string>Goldodict utilise la reconnaissance vocale locale de macOS pour convertir votre dictée en texte. Aucune donnée ne quitte cet ordinateur.</string>
 </dict>
 </plist>
