@@ -1,5 +1,6 @@
 import AbracadabraCore
 import AppKit
+import AVFoundation
 import Foundation
 import Observation
 
@@ -21,6 +22,21 @@ final class DictationController {
     private var resolver = TriggerResolver()
     private let hotkey = HotkeyMonitor()
     private let capture = AudioCapture()
+    private var engine: TranscriptionEngine = AppleSpeechEngine()
+
+    /// Langue de dictée. Le français est le seul usage prévu, mais le moteur Apple
+    /// exige une locale explicite et le choix sera exposé dans les réglages.
+    var locale = Locale(identifier: "fr_FR")
+
+    /// Vocabulaire transmis au moteur avant transcription. Alimenté par le lexique
+    /// au lot 3.
+    var contextualStrings: [String] = []
+
+    private var relay: BufferRelay?
+
+    /// Format réclamé par le moteur, interrogé une seule fois puis conservé : le
+    /// résoudre à chaque dictée retarderait le démarrage de la capture.
+    private var audioFormat: AVAudioFormat?
 
     /// Enregistre le raccourci global. À appeler une fois l'application lancée.
     func activate(combination: HotkeyMonitor.Combination = .controlOptionSpace) {
@@ -32,6 +48,27 @@ final class DictationController {
         if !hotkey.register(combination) {
             state = .failed("raccourci déjà pris par une autre application")
         }
+
+        // Les deux autorisations sont demandées au lancement plutôt qu'au milieu
+        // d'une dictée, où la fenêtre système volerait le focus de l'application
+        // dans laquelle l'utilisateur est en train d'écrire.
+        Task { _ = await PermissionGuard.requestMicrophone() }
+        _ = PermissionGuard.hasAccessibility(prompting: true)
+
+        // Le modèle de langue peut demander un téléchargement au premier lancement.
+        // L'anticiper évite que la première dictée échoue faute de modèle.
+        let locale = self.locale
+        Task { [weak self] in
+            do {
+                try await AppleSpeechEngine.prepareAssets(for: locale)
+            } catch {
+                await self?.reportPreparationFailure(error.localizedDescription)
+            }
+        }
+    }
+
+    private func reportPreparationFailure(_ reason: String) {
+        if case .idle = state { state = .failed(reason) }
     }
 
     func deactivate() {
@@ -65,36 +102,87 @@ final class DictationController {
             return
         }
 
+        let relay = BufferRelay()
+        self.relay = relay
+        capture.onBuffer = { buffer in relay.push(buffer) }
+
         do {
-            try capture.start()
-            state = .recording(mode)
-            play(.start)
+            // La capture démarre sans attendre l'ouverture du moteur : le relais
+            // conserve les tampons produits entre-temps.
+            try capture.start(targetFormat: audioFormat ?? AudioCapture.whisperFormat)
         } catch {
             resolver.reset()
+            self.relay = nil
             state = .failed(error.localizedDescription)
+            return
+        }
+
+        state = .recording(mode)
+        play(.start)
+
+        let engine = self.engine
+        let locale = self.locale
+        let strings = self.contextualStrings
+        Task { [weak self] in
+            do {
+                if await self?.audioFormat == nil {
+                    let format = await engine.preferredAudioFormat()
+                    await self?.cache(audioFormat: format)
+                }
+                try await engine.start(locale: locale, contextualStrings: strings)
+                relay.attach(to: engine)
+            } catch {
+                await self?.abortCapture(reason: error.localizedDescription)
+            }
         }
     }
 
     private func endCapture() {
-        let samples = capture.stop()
+        capture.stop()
+        capture.onBuffer = nil
         play(.stop)
+        state = .transcribing
 
-        guard !samples.isEmpty else {
+        let engine = self.engine
+        let relay = self.relay
+        self.relay = nil
+
+        Task { [weak self] in
+            await relay?.drain()
+            do {
+                let text = try await engine.finish()
+                await self?.deliver(text)
+            } catch {
+                await self?.abortCapture(reason: error.localizedDescription)
+            }
+        }
+    }
+
+    private func deliver(_ text: String) async {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
             state = .idle
             return
         }
 
-        state = .transcribing
+        state = .injecting
+        let outcome = await TextInjector.inject(cleaned)
+        record(transcript: cleaned)
+        state = outcome == .pasted ? .idle : .failed("texte copié, Accessibilité non autorisée")
+    }
 
-        // Le moteur de transcription est branché au lot 2. En attendant, un compte
-        // rendu de la capture permet de vérifier la chaîne raccourci → audio.
-        let duration = Double(samples.count) / AudioCapture.targetSampleRate
-        let peak = samples.map(abs).max() ?? 0
-        record(transcript: String(
-            format: "[capture] %.2f s, %d échantillons, crête %.3f",
-            duration, samples.count, peak
-        ))
-        state = .idle
+    private func abortCapture(reason: String) {
+        capture.stop()
+        capture.onBuffer = nil
+        relay?.cancel()
+        relay = nil
+        resolver.reset()
+        Task { [engine] in await engine.cancel() }
+        state = .failed(reason)
+    }
+
+    private func cache(audioFormat: AVAudioFormat) {
+        self.audioFormat = audioFormat
     }
 
     // MARK: - Historique

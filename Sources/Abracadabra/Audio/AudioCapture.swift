@@ -15,28 +15,34 @@ enum AudioCaptureError: LocalizedError {
     }
 }
 
-/// Capture du microphone, ramenée au format attendu par les deux moteurs :
-/// PCM 16 kHz, mono, virgule flottante 32 bits.
+/// Capture du microphone, ramenée au format réclamé par le moteur en service.
 ///
 /// Le format natif de l'entrée varie selon le matériel (48 kHz stéréo sur les micros
 /// intégrés, tout autre chose sur une interface externe). Le tap est donc installé
 /// avec le format natif — passer un format différent fait crasher `AVAudioEngine` —
 /// et un `AVAudioConverter` ramène chaque tampon au format cible.
+///
+/// Le format cible est fourni par l'appelant, car les deux moteurs ne demandent pas
+/// la même chose : Whisper veut du 16 kHz mono, Apple impose le format que lui rend
+/// `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)`.
 final class AudioCapture {
 
-    static let targetSampleRate: Double = 16_000
+    static let whisperSampleRate: Double = 16_000
+
+    /// PCM 16 kHz mono virgule flottante, format d'entrée de Whisper.
+    static let whisperFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: AudioCapture.whisperSampleRate,
+        channels: 1,
+        interleaved: false
+    )!
 
     /// Tampons convertis, livrés au fil de l'eau pour les moteurs en streaming.
     /// Appelé depuis un thread audio temps réel : ne rien y faire de coûteux.
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     private let engine = AVAudioEngine()
-    private let targetFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: AudioCapture.targetSampleRate,
-        channels: 1,
-        interleaved: false
-    )!
+    private var targetFormat = AudioCapture.whisperFormat
 
     private var converter: AVAudioConverter?
     private let accumulator = SampleAccumulator()
@@ -49,10 +55,14 @@ final class AudioCapture {
     /// Niveau sonore instantané (RMS) du dernier tampon, pour le retour visuel.
     var level: Float { accumulator.level }
 
-    func start() throws {
+    /// - Parameter targetFormat: format attendu par le moteur de transcription.
+    ///   Les échantillons ne sont accumulés que s'il s'agit de mono virgule flottante,
+    ///   seul cas où la transcription par lots (Whisper) a du sens.
+    func start(targetFormat: AVAudioFormat = AudioCapture.whisperFormat) throws {
         guard !isRunning else { return }
 
         accumulator.reset()
+        self.targetFormat = targetFormat
 
         let input = engine.inputNode
         let nativeFormat = input.outputFormat(forBus: 0)
@@ -108,7 +118,9 @@ final class AudioCapture {
 
         guard status != .error, output.frameLength > 0 else { return }
 
-        accumulator.append(output)
+        if targetFormat.channelCount == 1, targetFormat.commonFormat == .pcmFormatFloat32 {
+            accumulator.append(output)
+        }
         onBuffer?(output)
     }
 }
