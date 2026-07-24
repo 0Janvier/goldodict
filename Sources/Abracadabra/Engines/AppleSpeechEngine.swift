@@ -149,12 +149,12 @@ private actor Session {
             throw TranscriptionEngineError.notStarted
         }
         continuation?.finish()
-        Log.engine.notice("flux clos, appel de finalizeAndFinishThroughEndOfInput")
+        Log.engine.debug("flux clos, appel de finalizeAndFinishThroughEndOfInput")
         try await analyzer.finalizeAndFinishThroughEndOfInput()
-        Log.engine.notice("analyseur finalisé, attente du collecteur")
+        Log.engine.debug("analyseur finalisé, attente du collecteur")
 
         let text = try await collector.value
-        Log.engine.notice("collecteur terminé")
+        Log.engine.debug("collecteur terminé")
         teardown()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }

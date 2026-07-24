@@ -114,7 +114,7 @@ final class HotkeyMonitor {
     }
 
     fileprivate func dispatch(isDown: Bool) {
-        Log.hotkey.notice("événement \(isDown ? "enfoncé" : "relâché", privacy: .public)")
+        Log.hotkey.debug("événement \(isDown ? "enfoncé" : "relâché", privacy: .public)")
         onEvent?(isDown)
     }
 

@@ -193,7 +193,7 @@ final class DictationController {
         let now = ProcessInfo.processInfo.systemUptime
         let decision = isDown ? resolver.keyDown(at: now) : resolver.keyUp(at: now)
 
-        Log.hotkey.notice("décision : \(String(describing: decision), privacy: .public)")
+        Log.hotkey.debug("décision : \(String(describing: decision), privacy: .public)")
 
         switch decision {
         case .start(let mode):
@@ -264,7 +264,7 @@ final class DictationController {
         capture.onBuffer = nil
         play(.stop)
         state = .transcribing
-        Log.audio.notice("capture arrêtée, \(samples) échantillons accumulés")
+        Log.audio.debug("capture arrêtée, \(samples) échantillons accumulés")
 
         let engine = self.engine
         let relay = self.relay
@@ -272,7 +272,7 @@ final class DictationController {
 
         Task { [weak self] in
             await relay?.drain()
-            Log.engine.notice("relais vidé, finalisation du moteur")
+            Log.engine.debug("relais vidé, finalisation du moteur")
             do {
                 let text = try await engine.finish()
                 Log.engine.notice("transcription : \(text.count) caractères")

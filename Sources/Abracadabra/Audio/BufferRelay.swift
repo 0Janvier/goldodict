@@ -45,7 +45,7 @@ final class BufferRelay: @unchecked Sendable {
     func drain() async {
         continuation.finish()
         await pump?.value
-        Log.audio.notice("relais : \(self.delivered) tampons livrés au moteur")
+        Log.audio.debug("relais : \(self.delivered) tampons livrés au moteur")
     }
 
     func cancel() {
