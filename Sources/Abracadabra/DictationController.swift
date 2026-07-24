@@ -27,9 +27,9 @@ final class DictationController {
         switch state {
         case .idle:
             overlay.hide()
-        case .recording, .transcribing, .injecting:
+        case .recording, .transcribing, .correcting, .injecting:
             overlay.show(state: state)
-        case .failed:
+        case .notice, .failed:
             overlay.show(state: state)
             overlayDismissal = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(4))
@@ -115,6 +115,16 @@ final class DictationController {
     /// Chaîne de traitement du texte brut : ponctuation, lexique, typographie.
     private var pipeline = TranscriptPipeline()
 
+    let profileStore = ProfileStore()
+    private let corrector = CorrectionService()
+
+    /// Profil retenu pour la dictée en cours.
+    ///
+    /// Il est arrêté à l'enfoncement de la touche, jamais à l'insertion : entre les
+    /// deux, l'application au premier plan a pu changer, et le texte serait alors
+    /// traité selon les règles d'une fenêtre qui n'est plus la cible.
+    private var activeProfile: AppProfile = .redaction
+
     /// Vocabulaire transmis au moteur avant transcription, tiré du lexique.
     private var contextualStrings: [String] { lexiconStore.lexicon.contextualStrings }
 
@@ -143,7 +153,16 @@ final class DictationController {
         }
 
         lexiconStore.load()
+        profileStore.load()
         reloadPipeline()
+
+        // Le préchargement du modèle Ollama est déterminant : à froid, la première
+        // correction demande près de huit secondes et serait abandonnée pour rien.
+        let thresholds = CorrectionGuard.Thresholds(retention: preferences.correctionRetention)
+        Task { [corrector] in
+            await corrector.setThresholds(thresholds)
+            await corrector.warmUp()
+        }
 
         // Modèle Whisper et moteur retenus lors de la session précédente.
         if preferences.whisperModel != whisperEngine.model {
@@ -224,6 +243,14 @@ final class DictationController {
             return
         }
 
+        // Le profil est arrêté ici, avant que quoi que ce soit d'autre n'ait pu
+        // prendre le premier plan.
+        let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        activeProfile = profileStore.profiles.profile(for: frontmost)
+        Log.lifecycle.notice(
+            "profil \(self.activeProfile.name, privacy: .public) pour \(frontmost ?? "application inconnue", privacy: .public)"
+        )
+
         let relay = BufferRelay()
         self.relay = relay
         capture.onBuffer = { buffer in relay.push(buffer) }
@@ -299,7 +326,24 @@ final class DictationController {
     }
 
     private func deliver(_ text: String) async {
-        let cleaned = pipeline.process(text)
+        let profile = activeProfile
+        let prepared = pipeline.prepare(text, profile: profile)
+        guard !prepared.isEmpty else {
+            state = .idle
+            return
+        }
+
+        var corrected = prepared
+        var note: String?
+
+        if profile.correctText, preferences.correctionEnabled {
+            state = .correcting
+            let outcome = await corrector.correct(prepared)
+            corrected = outcome.text
+            note = outcome.note
+        }
+
+        let cleaned = pipeline.finalize(corrected, profile: profile)
         guard !cleaned.isEmpty else {
             state = .idle
             return
@@ -312,7 +356,16 @@ final class DictationController {
             restorePasteboard: preferences.restorePasteboard
         )
         record(transcript: cleaned)
-        state = outcome == .pasted ? .idle : .failed("texte copié, Accessibilité non autorisée")
+
+        if outcome != .pasted {
+            state = .failed("texte copié, Accessibilité non autorisée")
+        } else if let note {
+            // Le texte est bien inséré : la note informe de ce qui a été fait, ou
+            // n'a pas pu l'être, sans être présentée comme une panne.
+            state = .notice(note)
+        } else {
+            state = .idle
+        }
     }
 
     private func abortCapture(reason: String) {

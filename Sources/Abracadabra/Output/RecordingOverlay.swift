@@ -169,7 +169,8 @@ private struct OverlayView: View {
     private var tint: Color {
         switch model.state {
         case .recording: return .red
-        case .transcribing, .injecting: return .accentColor
+        case .transcribing, .correcting, .injecting: return .accentColor
+        case .notice: return .blue
         case .failed: return .orange
         case .idle: return .secondary
         }
@@ -179,7 +180,9 @@ private struct OverlayView: View {
         switch model.state {
         case .recording: return "Dictée en cours"
         case .transcribing: return "Transcription"
+        case .correcting: return "Correction"
         case .injecting: return "Insertion"
+        case .notice: return "Texte inséré"
         case .failed: return "Erreur"
         case .idle: return "Prêt"
         }
@@ -190,7 +193,9 @@ private struct OverlayView: View {
         case .recording(.pushToTalk): return "Relâchez pour insérer le texte"
         case .recording(.toggle): return "Appuyez de nouveau pour terminer"
         case .transcribing: return "Traitement local en cours"
+        case .correcting: return "Relecture par le modèle local"
         case .injecting: return "Collage dans l'application active"
+        case .notice(let message): return message
         case .failed(let message): return message
         case .idle: return ""
         }

@@ -24,6 +24,9 @@ final class Preferences {
         static let lineBreaks = "punctuation.lineBreaks"
         static let compoundMarks = "punctuation.compoundMarks"
         static let capitalize = "punctuation.capitalize"
+        static let correctionEnabled = "correction.enabled"
+        static let correctionRetention = "correction.retention"
+        static let ollamaModel = "correction.ollamaModel"
     }
 
     private let defaults: UserDefaults
@@ -42,7 +45,29 @@ final class Preferences {
             Key.lineBreaks: true,
             Key.compoundMarks: true,
             Key.capitalize: true,
+            Key.correctionEnabled: true,
+            Key.correctionRetention: 0.75,
+            Key.ollamaModel: OllamaCorrector.defaultModel,
         ])
+    }
+
+    // MARK: - Correction
+
+    var correctionEnabled: Bool {
+        get { access(keyPath: \.correctionEnabled); return defaults.bool(forKey: Key.correctionEnabled) }
+        set { withMutation(keyPath: \.correctionEnabled) { defaults.set(newValue, forKey: Key.correctionEnabled) } }
+    }
+
+    /// Part minimale des mots à conserver pour qu'une correction soit acceptée.
+    /// Abaisser ce seuil laisse passer davantage de reformulations.
+    var correctionRetention: Double {
+        get { access(keyPath: \.correctionRetention); return defaults.double(forKey: Key.correctionRetention) }
+        set { withMutation(keyPath: \.correctionRetention) { defaults.set(newValue, forKey: Key.correctionRetention) } }
+    }
+
+    var ollamaModel: String {
+        get { access(keyPath: \.ollamaModel); return defaults.string(forKey: Key.ollamaModel) ?? OllamaCorrector.defaultModel }
+        set { withMutation(keyPath: \.ollamaModel) { defaults.set(newValue, forKey: Key.ollamaModel) } }
     }
 
     // MARK: - Moteur
