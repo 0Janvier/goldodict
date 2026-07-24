@@ -36,7 +36,9 @@ La séparation en deux cibles n'est pas cosmétique : `GoldodictCore` ne dépend
 
 Vérifier au seul lancement ne suffit donc pas. `AppleSpeechEngine.install(_:locale:)` est appelé au démarrage **et** à l'ouverture de chaque dictée, sur un module construit par la fabrique commune `makeTranscriber(locale:)` — l'installation et la session doivent porter sur la même configuration. Le coût à chaud est nul, et la capture tourne déjà pendant ce temps : le relais FIFO conserve les tampons.
 
-**Piège** : `AssetInventory.assetInstallationRequest(supporting:)` peut rendre `nil`. Ce n'est pas un succès, mais l'aveu que le module n'est pas installé et que le système n'offre rien pour l'installer. Le traiter comme un cas nominal produit une préparation silencieusement réussie, puis un échec à la première dictée, sans une ligne de journal pour relier les deux.
+**Piège n° 1** : `AssetInventory.assetInstallationRequest(supporting:)` peut rendre `nil`. Ce n'est pas un succès, mais l'aveu que le module n'est pas installé et que le système n'offre rien pour l'installer. Le traiter comme un cas nominal produit une préparation silencieusement réussie, puis un échec à la première dictée, sans une ligne de journal pour relier les deux.
+
+**Piège n° 2, plus retors** : la réservation de la locale (`AssetInventory.reserve(locale:)`) n'est pas plus persistante que le statut. La documentation Apple le dit en une ligne discrète : *« the system may unsubscribe your app from assets that haven't been used in a while »* — et la réservation part avec. Une fois évincée, `assetInstallationRequest(supporting:)` rend tout de même une requête, et `downloadAndInstall()` rend la main sans lever d'erreur, mais le statut relu ensuite reste `.supported`, indéfiniment (vérifié à la sonde jusqu'à 1,5 s d'attente, pour écarter un simple délai de propagation). La v2.1.3 vérifiait le statut à chaque dictée mais ne réservait qu'au lancement, dans `prepareAssets` — insuffisant après une heure d'inactivité. La v2.1.4 déplace la réservation dans `install(_:locale:)` lui-même, rejouée à chaque appel plutôt qu'une fois pour toutes.
 
 ### Le format audio est imposé par le moteur, jamais supposé
 
