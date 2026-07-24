@@ -1,4 +1,4 @@
-# Abracadabra
+# Goldodict
 
 Dictée vocale **entièrement locale** pour macOS. Le texte dicté arrive dans le presse-papiers et se colle automatiquement dans l'application active, quelle qu'elle soit.
 
@@ -11,9 +11,13 @@ Le raccourci global est **⌘⇧J**.
 - **Appui maintenu** : push-to-talk. Vous parlez, vous relâchez, le texte est inséré.
 - **Appui bref** : bascule marche/arrêt, pour les longues dictées. Un second appui termine.
 
-La capture démarre dès l'enfoncement de la touche, aucun début de phrase n'est perdu. Une pastille s'affiche en bas de l'écran pendant toute la dictée.
+La capture démarre dès l'enfoncement de la touche, aucun début de phrase n'est perdu.
 
-> L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. La fenêtre de réglages s'ouvre d'elle-même au premier lancement.
+**La pastille.** Pendant la dictée, une pilule s'affiche en bas de l'écran : point rouge, vumètre animé sur le niveau du micro, minuterie. Le vumètre est là pour une raison précise — il distingue « l'application écoute » de « le micro capte quelque chose », deux états qu'un simple voyant confond. La transcription puis l'insertion s'y affichent ensuite, et la pastille se referme sur le nombre de signes insérés et le nom de l'application destinataire.
+
+**Le menu.** Un clic sur l'icône de la barre des menus ouvre un panneau : état, autorisations manquantes, bouton de dictée, choix du moteur, cinq dernières dictées recopiables d'un clic. La dictée lancée depuis ce panneau revient à l'application où vous étiez, et non à Goldodict.
+
+> L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. Au premier lancement, une fenêtre d'accueil demande les deux autorisations une à une, propose le choix du moteur et offre un champ d'essai.
 
 ## Moteurs de transcription
 
@@ -49,7 +53,7 @@ Le traitement s'adapte à l'application dans laquelle vous dictez, relevée au m
 | **Brut** | Ghostty, Terminal, Xcode, VS Code, Cursor | Rien. Le texte arrive tel qu'il a été dit |
 | **Messagerie** | Slack, Messages, WhatsApp, Telegram | Ponctuation et majuscules, sans correction ni insécables |
 
-Fichier : `~/Library/Application Support/Abracadabra/profils.json`. Une application non répertoriée reçoit le premier profil de la liste.
+Fichier : `~/Library/Application Support/Goldodict/profils.json`. Une application non répertoriée reçoit le premier profil de la liste.
 
 ## Vocabulaire personnalisé
 
@@ -63,7 +67,7 @@ Deux mécanismes cumulables, tous deux alimentés par le même fichier.
 ]
 ```
 
-Emplacement : `~/Library/Application Support/Abracadabra/lexique.json`, éditable à la main ou depuis l'onglet Lexique des réglages.
+Emplacement : `~/Library/Application Support/Goldodict/lexique.json`, éditable à la main ou depuis l'onglet Lexique des réglages.
 
 Le drapeau `biaiser` transmet le terme au moteur **avant** transcription (`contextualStrings` chez Apple, `initial_prompt` chez Whisper) : mieux vaut que le moteur reconnaisse correctement que d'avoir à rattraper après coup.
 
@@ -79,7 +83,9 @@ Les marques simples sont désactivables dans les réglages : en droit, « le poi
 
 Le script compile, signe avec l'identité Developer ID et installe dans `/Applications`. Au premier lancement, autoriser le **Microphone** puis l'**Accessibilité** dans Réglages Système > Confidentialité et sécurité.
 
-Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas collé.
+Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas collé. C'est le seul défaut silencieux de l'application : il est signalé dans le menu, dans les réglages et dans la fenêtre d'accueil.
+
+**Reprise d'Abracadabra.** L'application portait ce nom jusqu'à la version 0.1.0. Le lexique et les profils laissés dans `~/Library/Application Support/Abracadabra/` sont recopiés au premier lancement, et les réglages repris depuis l'ancien domaine de préférences. L'ancien dossier n'est pas supprimé. Les autorisations Microphone et Accessibilité, elles, sont à redonner : macOS les indexe sur l'identifiant de bundle, qui a changé.
 
 ## Prérequis
 
@@ -91,8 +97,8 @@ Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas
 ## Développement
 
 ```bash
-swift build --scratch-path ~/.cache/abracadabra-build
-swift test  --scratch-path ~/.cache/abracadabra-build
+swift build --scratch-path ~/.cache/goldodict-build
+swift test  --scratch-path ~/.cache/goldodict-build
 ```
 
 Le `--scratch-path` hors de `~/Documents` est indispensable : iCloud évince le contenu de `.build` et casse les compilations. Pour la même raison, `make_app.sh` assemble et signe le bundle hors du dossier du projet, `fileproviderd` y reposant des attributs étendus que `codesign` refuse.
@@ -100,15 +106,17 @@ Le `--scratch-path` hors de `~/Documents` est indispensable : iCloud évince le 
 Journal en direct :
 
 ```bash
-log stream --predicate 'subsystem == "fr.sztulman.abracadabra"' --level debug
+log stream --predicate 'subsystem == "fr.sztulman.goldodict"' --level debug
 ```
 
 ## Structure
 
 | Chemin | Rôle |
 |---|---|
-| `Sources/AbracadabraCore/` | Logique pure et testable : état, geste de déclenchement, lexique, ponctuation, typographie |
-| `Sources/Abracadabra/` | Application : raccourci, audio, moteurs, insertion, réglages |
+| `Sources/GoldodictCore/` | Logique pure et testable : état, geste de déclenchement, lexique, ponctuation, typographie |
+| `Sources/Goldodict/` | Application : raccourci, audio, moteurs, insertion, réglages |
 | `sidecar/` | Démon Python pour Whisper MLX |
+| `design/` | Icône vectorielle, et sa déclinaison pour les petites tailles |
 | `scripts/make_app.sh` | Construction du bundle, signature, installation |
+| `scripts/make_icon.sh` | Rendu de `Resources/AppIcon.icns` depuis le vectoriel |
 | `docs/ARCHITECTURE.md` | Décisions de conception et pièges rencontrés |

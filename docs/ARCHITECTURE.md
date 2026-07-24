@@ -1,4 +1,4 @@
-# Architecture d'Abracadabra
+# Architecture de Goldodict
 
 Ce document consigne les décisions de conception et, surtout, les pièges rencontrés — ceux qui ne se devinent pas et coûtent une demi-journée à qui les redécouvre.
 
@@ -20,7 +20,7 @@ Ce document consigne les décisions de conception et, surtout, les pièges renco
 
 Le contrôleur ne connaît que le protocole `TranscriptionEngine`. Ajouter un moteur ne touche aucune autre couche.
 
-La séparation en deux cibles n'est pas cosmétique : `AbracadabraCore` ne dépend d'aucun framework système, ce qui la rend testable sans micro, sans clavier et sans autorisation. `Abracadabra` est une cible `@main`, que SwiftPM ne sait pas tester directement.
+La séparation en deux cibles n'est pas cosmétique : `GoldodictCore` ne dépend d'aucun framework système, ce qui la rend testable sans micro, sans clavier et sans autorisation. `Goldodict` est une cible `@main`, que SwiftPM ne sait pas tester directement.
 
 ## Décisions
 
@@ -47,6 +47,28 @@ Second bénéfice : la capture démarre dès l'enfoncement de la touche, alors q
 L'icône de la barre des menus **ne suffit pas**. Sur un écran large et une barre chargée, macOS relègue les icônes surnuméraires derrière un chevron où elles sont invisibles. L'utilisateur ne sait alors pas si sa dictée est en cours, ré-appuie sur le raccourci et l'interrompt.
 
 `RecordingOverlay` est un `NSPanel` `.nonactivatingPanel` qui ignore la souris : il ne prend jamais le focus, sans quoi le collage automatique atterrirait dans la mauvaise application.
+
+La pastille montre le **signal**, pas seulement l'état de l'application. Un voyant fixe confond « j'écoute » et « je capte quelque chose », deux situations que rien ne distinguait quand le micro était coupé ou pris par une autre application. Le vumètre est alimenté par `AudioLevel`, qui convertit la valeur efficace en décibels — une échelle linéaire écraserait toute voix ordinaire contre le bas — puis lisse le résultat de façon asymétrique, l'attaque devant se voir immédiatement là où une fin de mot peut retomber.
+
+### Barre des menus : `NSStatusItem`, pas `MenuBarExtra`
+
+`MenuBarExtra(.menu)` construit un `NSMenu` et **abandonne en silence** tout ce qui n'est ni `Text`, ni `Button`, ni `Divider`, ni `Menu`. Le panneau voulu — bandeaux d'autorisation, sélecteur de moteur, historique cliquable — n'aurait affiché que ses boutons. D'où un `NSStatusItem` portant un `NSPopover`, dont le contenu est un `NSHostingController` en `sizingOptions: [.preferredContentSize]` pour que la hauteur suive celle de la vue SwiftUI.
+
+**Piège** : dicter depuis ce panneau. L'ouverture du popover et `NSApp.activate` mettent Goldodict au premier plan, si bien que l'application « précédente » relevée par `beginCapture` serait Goldodict lui-même, et le texte n'irait nulle part. Le frontmost est donc capturé **avant** l'activation, réactivé à la fermeture, et la capture attend 180 ms que le changement d'application ait pris effet.
+
+Second piège, invisible au test manuel : une dictée lancée par le menu laissait `TriggerResolver` au repos, et l'appui suivant sur le raccourci en démarrait une **seconde** au lieu d'arrêter la première. D'où `adoptToggle()`, qui déclare au résolveur une bascule qu'il n'a pas vue passer.
+
+### L'icône de la barre des menus est dessinée à part
+
+L'icône d'application est illisible à 18 px : la visière, deux losanges, une bouche et deux arcs s'y confondent. `StatusIcon` retrace la silhouette à la main dans un `NSImage` en mode gabarit, ce qui lui vaut en prime de suivre le thème clair ou sombre du système. La bouche s'ouvre en enregistrement, et la teinte passe au rouge — une forme change en même temps que la couleur, pour ne pas reposer sur elle seule.
+
+Le même raisonnement vaut pour le fichier `.icns` : sous 48 px, les arcs de son se referment sur la bouche. `make_icon.sh` bascule alors sur `goldodict-icon-small.svg`, où ils disparaissent au profit du seul casque. Chaque taille est par ailleurs tracée depuis le vectoriel, jamais rééchantillonnée depuis la plus grande.
+
+### Le premier lancement demande les autorisations une à une
+
+Réclamer micro et Accessibilité au lancement produisait deux boîtes de dialogue superposées, sans contexte, dans une application sans fenêtre. `OnboardingWindow` les présente séparément, chacune avec sa conséquence, et offre une porte de sortie explicite — « Continuer sans coller automatiquement » — plutôt que de laisser l'utilisateur refuser l'Accessibilité et découvrir plus tard que rien ne se colle.
+
+**Piège** : ces autorisations changent dans Réglages Système, hors du champ d'observation de SwiftUI. Rien ne rafraîchit la vue au retour. Un `Timer` d'une seconde relit donc l'état tant que la fenêtre est ouverte.
 
 ### Fenêtre de réglages construite à la main
 
@@ -92,6 +114,14 @@ Une correction jugée **infidèle** n'entraîne en revanche aucune seconde tenta
 
 Piège rencontré dans l'onglet Profils : construire un `Binding` à partir de la valeur rendue par `ForEach` capture une **copie figée**. La vue affiche alors un état périmé, et toute écriture repart de cette copie en réinscrivant au passage les réglages voisins — le fichier de profils s'était retrouvé avec deux valeurs erronées. Le binding relit désormais le profil dans son magasin à chaque accès.
 
+### Le renommage déplace deux magasins, et en casse un troisième
+
+`Abracadabra` est devenu `Goldodict` avec la version 0.1.0. Trois emplacements en dépendaient.
+
+1. `~/Library/Application Support/Abracadabra/` — lexique et profils, recopiés par `SupportDirectory` au premier accès. Copie et non déplacement, pour qu'un retour en arrière reste possible ; la reprise ne s'exécute qu'une fois et seulement sur un dossier de destination inexistant.
+2. Le domaine de préférences, indexé sur l'identifiant de bundle. `Preferences` relit l'ancien domaine clé par clé, sous drapeau de migration — sans lui, une valeur remise volontairement à son défaut serait réécrite au lancement suivant depuis l'ancien domaine.
+3. Les autorisations TCC, que macOS indexe sur l'identifiant de bundle **et** sur la signature. Rien ne peut les reprendre : elles sont à redonner. C'est précisément le rôle de la fenêtre d'accueil.
+
 ## Contraintes de la machine
 
 ### Signature et autorisations
@@ -102,7 +132,7 @@ Le bundle est signé avec l'identité **Developer ID Application**, pas en ad ho
 
 Deux conséquences, toutes deux traitées dans `make_app.sh` :
 
-1. `.build` sous `~/Documents` est évincé par iCloud en cours de compilation. D'où `--scratch-path ~/.cache/abracadabra-build`.
+1. `.build` sous `~/Documents` est évincé par iCloud en cours de compilation. D'où `--scratch-path ~/.cache/goldodict-build`.
 2. `fileproviderd` repose `com.apple.FinderInfo` et `com.apple.fileprovider.fpfs#P` **instantanément** sur tout fichier du dossier. `codesign` refuse alors de signer, et un `xattr -cr` préalable ne suffit pas : les attributs réapparaissent avant la signature. Le bundle est donc assemblé et signé hors du dossier du projet, puis copié.
 
 ## Ce qui n'est pas persisté, volontairement
