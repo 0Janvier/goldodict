@@ -53,9 +53,13 @@ final class DictationController {
     /// exige une locale explicite et le choix sera exposé dans les réglages.
     var locale = Locale(identifier: "fr_FR")
 
-    /// Vocabulaire transmis au moteur avant transcription. Alimenté par le lexique
-    /// au lot 3.
-    var contextualStrings: [String] = []
+    let lexiconStore = LexiconStore()
+
+    /// Chaîne de traitement du texte brut : ponctuation, lexique, typographie.
+    private var pipeline = TranscriptPipeline()
+
+    /// Vocabulaire transmis au moteur avant transcription, tiré du lexique.
+    private var contextualStrings: [String] { lexiconStore.lexicon.contextualStrings }
 
     private var relay: BufferRelay?
 
@@ -77,6 +81,9 @@ final class DictationController {
         if !hotkey.register(combination) {
             state = .failed("raccourci \(combination.displayString) déjà pris")
         }
+
+        lexiconStore.load()
+        pipeline.lexicon = lexiconStore.lexicon
 
         // Les deux autorisations sont demandées au lancement plutôt qu'au milieu
         // d'une dictée, où la fenêtre système volerait le focus de l'application
@@ -210,7 +217,7 @@ final class DictationController {
     }
 
     private func deliver(_ text: String) async {
-        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = pipeline.process(text)
         guard !cleaned.isEmpty else {
             state = .idle
             return

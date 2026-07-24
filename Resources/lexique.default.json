@@ -1,0 +1,102 @@
+[
+  {
+    "entendu": "cage de baisse",
+    "corrige": "CAA de Bordeaux",
+    "biaiser": true
+  },
+  {
+    "entendu": "té a de toulouse",
+    "corrige": "TA de Toulouse",
+    "biaiser": true
+  },
+  {
+    "entendu": "conseil d'état",
+    "corrige": "Conseil d'État",
+    "biaiser": true
+  },
+  {
+    "entendu": "cour administrative d'appel",
+    "corrige": "cour administrative d'appel",
+    "biaiser": true
+  },
+  {
+    "entendu": "cé jé a",
+    "corrige": "CJA",
+    "biaiser": true
+  },
+  {
+    "entendu": "code de justice administrative",
+    "corrige": "code de justice administrative",
+    "biaiser": true
+  },
+  {
+    "entendu": "recours pour excès de pouvoir",
+    "corrige": "recours pour excès de pouvoir",
+    "biaiser": true
+  },
+  {
+    "entendu": "référé suspension",
+    "corrige": "référé-suspension",
+    "biaiser": true
+  },
+  {
+    "entendu": "référé liberté",
+    "corrige": "référé-liberté",
+    "biaiser": true
+  },
+  {
+    "entendu": "rapo",
+    "corrige": "RAPO",
+    "biaiser": true
+  },
+  {
+    "entendu": "hatvp",
+    "corrige": "HATVP",
+    "biaiser": true
+  },
+  {
+    "entendu": "cédéh",
+    "corrige": "CEDH",
+    "biaiser": true
+  },
+  {
+    "entendu": "cé jé u e",
+    "corrige": "CJUE",
+    "biaiser": true
+  },
+  {
+    "entendu": "moyen tiré de",
+    "corrige": "moyen tiré de",
+    "biaiser": true
+  },
+  {
+    "entendu": "erreur manifeste d'appréciation",
+    "corrige": "erreur manifeste d'appréciation",
+    "biaiser": true
+  },
+  {
+    "entendu": "détournement de pouvoir",
+    "corrige": "détournement de pouvoir",
+    "biaiser": true
+  },
+  {
+    "entendu": "incompétence négative",
+    "corrige": "incompétence négative",
+    "biaiser": true
+  },
+  {
+    "entendu": "barreau de toulouse",
+    "corrige": "barreau de Toulouse",
+    "biaiser": true
+  },
+  {
+    "entendu": "au demeurant",
+    "corrige": "au demeurant",
+    "biaiser": true
+  },
+  {
+    "entendu": "partant",
+    "corrige": "Partant",
+    "biaiser": false
+  }
+]
