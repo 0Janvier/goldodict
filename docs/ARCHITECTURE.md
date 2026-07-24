@@ -30,6 +30,14 @@ La séparation en deux cibles n'est pas cosmétique : `GoldodictCore` ne dépend
 
 **Piège** : le gestionnaire doit être installé sur `GetApplicationEventTarget()`. Avec `GetEventDispatcherTarget()`, l'enregistrement réussit, `RegisterEventHotKey` renvoie `noErr`, et **aucun événement n'arrive jamais**. Panne silencieuse, la pire à diagnostiquer.
 
+### Le statut du modèle de langue ne vaut que pour le processus courant
+
+`AssetInventory.status(forModules:)` ne dit pas si le modèle est présent sur la machine, mais s'il est attaché au processus qui pose la question. Il rend `.supported` à chaque démarrage, et ne passe à `.installed` qu'après un `downloadAndInstall()` — lequel est immédiat lorsque les fichiers sont déjà sur le disque. Rien ne survit à la sortie du processus. La notion système, elle, est `SpeechTranscriber.installedLocales` : sur cette machine elle contient le français depuis toujours, sans que le statut du module en dise autant.
+
+Vérifier au seul lancement ne suffit donc pas. `AppleSpeechEngine.install(_:locale:)` est appelé au démarrage **et** à l'ouverture de chaque dictée, sur un module construit par la fabrique commune `makeTranscriber(locale:)` — l'installation et la session doivent porter sur la même configuration. Le coût à chaud est nul, et la capture tourne déjà pendant ce temps : le relais FIFO conserve les tampons.
+
+**Piège** : `AssetInventory.assetInstallationRequest(supporting:)` peut rendre `nil`. Ce n'est pas un succès, mais l'aveu que le module n'est pas installé et que le système n'offre rien pour l'installer. Le traiter comme un cas nominal produit une préparation silencieusement réussie, puis un échec à la première dictée, sans une ligne de journal pour relier les deux.
+
 ### Le format audio est imposé par le moteur, jamais supposé
 
 `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)` rend le format que le moteur Apple attend — sur cette machine, 16 kHz **Int16** mono. Whisper, lui, veut du 16 kHz **Float32**. `AudioCapture` prend donc son format cible en paramètre.
