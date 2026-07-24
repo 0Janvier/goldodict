@@ -9,20 +9,17 @@ struct AbracadabraApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuView(controller: controller)
+            MenuView(controller: controller) { delegate.openSettings() }
         } label: {
             Image(systemName: controller.state.symbolName)
         }
         .menuBarExtraStyle(.menu)
-
-        Settings {
-            SettingsView()
-        }
     }
 }
 
 struct MenuView: View {
     let controller: DictationController
+    let openSettings: () -> Void
 
     private var engineLabel: String {
         controller.currentEngineIdentifier == "apple"
@@ -72,7 +69,7 @@ struct MenuView: View {
 
         Divider()
 
-        SettingsLink { Text("Réglages…") }
+        Button("Réglages…", action: openSettings)
             .keyboardShortcut(",", modifiers: .command)
 
         Button("Quitter Abracadabra") { NSApplication.shared.terminate(nil) }
@@ -80,15 +77,3 @@ struct MenuView: View {
     }
 }
 
-struct SettingsView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Réglages")
-                .font(.title2)
-            Text("Le contenu des réglages arrive au lot 5.")
-                .foregroundStyle(.secondary)
-        }
-        .padding(24)
-        .frame(width: 480, height: 320, alignment: .topLeading)
-    }
-}

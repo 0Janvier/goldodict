@@ -75,6 +75,26 @@ final class DictationController {
     var locale = Locale(identifier: "fr_FR")
 
     let lexiconStore = LexiconStore()
+    let preferences = Preferences()
+
+    var microphoneGranted: Bool { PermissionGuard.microphoneStatus == .authorized }
+    var accessibilityGranted: Bool { PermissionGuard.hasAccessibility() }
+
+    /// Recharge la chaîne de traitement depuis le lexique et les réglages.
+    func reloadPipeline() {
+        pipeline.lexicon = lexiconStore.lexicon
+        pipeline.punctuation = PunctuationCommands(options: preferences.punctuationOptions)
+    }
+
+    func updateLexicon(_ lexicon: Lexicon) {
+        lexiconStore.update(lexicon)
+        reloadPipeline()
+    }
+
+    func selectEngine(identifier: String) {
+        preferences.engineIdentifier = identifier
+        select(engine: identifier == "whisper-mlx" ? whisperEngine : appleEngine)
+    }
 
     /// Moteurs disponibles, dans l'ordre d'affichage.
     let appleEngine = AppleSpeechEngine()
@@ -84,6 +104,7 @@ final class DictationController {
     /// modèle étant immuable par construction.
     func selectWhisperModel(_ model: String) {
         guard !state.isBusy, model != whisperEngine.model else { return }
+        preferences.whisperModel = model
         let wasSelected = currentEngineIdentifier == whisperEngine.identifier
         let previous = whisperEngine
         whisperEngine = WhisperMLXEngine(model: model)
@@ -107,19 +128,30 @@ final class DictationController {
     private(set) var combination: HotkeyMonitor.Combination = .commandShiftJ
 
     /// Enregistre le raccourci global. À appeler une fois l'application lancée.
-    func activate(combination: HotkeyMonitor.Combination = .commandShiftJ) {
+    func activate(combination: HotkeyMonitor.Combination? = nil) {
         hotkey.onEvent = { [weak self] isDown in
             MainActor.assumeIsolated {
                 self?.handleHotkey(isDown: isDown)
             }
         }
+
+        let combination = combination ?? preferences.hotkey
+        resolver = TriggerResolver(holdThreshold: preferences.holdThreshold)
         self.combination = combination
         if !hotkey.register(combination) {
             state = .failed("raccourci \(combination.displayString) déjà pris")
         }
 
         lexiconStore.load()
-        pipeline.lexicon = lexiconStore.lexicon
+        reloadPipeline()
+
+        // Modèle Whisper et moteur retenus lors de la session précédente.
+        if preferences.whisperModel != whisperEngine.model {
+            whisperEngine = WhisperMLXEngine(model: preferences.whisperModel)
+        }
+        if preferences.engineIdentifier == "whisper-mlx" {
+            select(engine: whisperEngine)
+        }
 
         // Les deux autorisations sont demandées au lancement plutôt qu'au milieu
         // d'une dictée, où la fenêtre système volerait le focus de l'application
@@ -260,7 +292,11 @@ final class DictationController {
         }
 
         state = .injecting
-        let outcome = await TextInjector.inject(cleaned)
+        let outcome = await TextInjector.inject(
+            cleaned,
+            autoPaste: preferences.autoPaste,
+            restorePasteboard: preferences.restorePasteboard
+        )
         record(transcript: cleaned)
         state = outcome == .pasted ? .idle : .failed("texte copié, Accessibilité non autorisée")
     }
