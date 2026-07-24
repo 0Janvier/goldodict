@@ -76,11 +76,15 @@ private actor Session {
     private var analyzer: SpeechAnalyzer?
     private var continuation: AsyncStream<AnalyzerInput>.Continuation?
     private var collector: Task<String, Error>?
+    private var expectedFormat: AVAudioFormat?
+    private var rejectedBuffers = 0
 
     func preferredAudioFormat() async -> AVAudioFormat {
         let probe = SpeechTranscriber(locale: Locale(identifier: "fr_FR"), preset: .progressiveTranscription)
-        return await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probe])
+        let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probe])
             ?? AudioCapture.whisperFormat
+        expectedFormat = format
+        return format
     }
 
     func start(locale: Locale, contextualStrings: [String]) async throws {
@@ -126,6 +130,17 @@ private actor Session {
     }
 
     func feed(_ buffer: AVAudioPCMBuffer) {
+        // Un tampon au mauvais format ne provoque pas une erreur côté framework
+        // mais une assertion fatale qui tue le processus. On l'écarte ici.
+        if let expectedFormat, buffer.format != expectedFormat {
+            rejectedBuffers += 1
+            if rejectedBuffers == 1 {
+                Log.engine.error(
+                    "tampon écarté, format \(buffer.format, privacy: .public) au lieu de \(expectedFormat, privacy: .public)"
+                )
+            }
+            return
+        }
         continuation?.yield(AnalyzerInput(buffer: buffer))
     }
 
@@ -134,9 +149,12 @@ private actor Session {
             throw TranscriptionEngineError.notStarted
         }
         continuation?.finish()
+        Log.engine.notice("flux clos, appel de finalizeAndFinishThroughEndOfInput")
         try await analyzer.finalizeAndFinishThroughEndOfInput()
+        Log.engine.notice("analyseur finalisé, attente du collecteur")
 
         let text = try await collector.value
+        Log.engine.notice("collecteur terminé")
         teardown()
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -155,5 +173,6 @@ private actor Session {
         collector = nil
         analyzer = nil
         transcriber = nil
+        rejectedBuffers = 0
     }
 }

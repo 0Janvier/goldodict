@@ -38,10 +38,10 @@ final class DictationController {
     /// résoudre à chaque dictée retarderait le démarrage de la capture.
     private var audioFormat: AVAudioFormat?
 
-    /// Enregistre le raccourci global. À appeler une fois l'application lancée.
     /// Raccourci actuellement armé, affiché dans le menu.
     private(set) var combination: HotkeyMonitor.Combination = .commandShiftJ
 
+    /// Enregistre le raccourci global. À appeler une fois l'application lancée.
     func activate(combination: HotkeyMonitor.Combination = .commandShiftJ) {
         hotkey.onEvent = { [weak self] isDown in
             MainActor.assumeIsolated {
@@ -62,12 +62,19 @@ final class DictationController {
         // Le modèle de langue peut demander un téléchargement au premier lancement.
         // L'anticiper évite que la première dictée échoue faute de modèle.
         let locale = self.locale
+        let engine = self.engine
         Task { [weak self] in
             do {
                 try await AppleSpeechEngine.prepareAssets(for: locale)
             } catch {
                 await self?.reportPreparationFailure(error.localizedDescription)
             }
+            // Le format doit être connu AVANT la première capture : livrer au moteur
+            // un format autre que celui qu'il réclame ne produit pas une erreur mais
+            // une assertion fatale dans le framework Speech.
+            let format = await engine.preferredAudioFormat()
+            Log.engine.notice("format du moteur : \(format, privacy: .public)")
+            await self?.cache(audioFormat: format)
         }
     }
 
@@ -85,6 +92,8 @@ final class DictationController {
         // Horloge monotone : insensible aux changements d'heure système.
         let now = ProcessInfo.processInfo.systemUptime
         let decision = isDown ? resolver.keyDown(at: now) : resolver.keyUp(at: now)
+
+        Log.hotkey.notice("décision : \(String(describing: decision), privacy: .public)")
 
         switch decision {
         case .start(let mode):
@@ -106,6 +115,15 @@ final class DictationController {
             return
         }
 
+        // Sans format résolu, aucune capture : mieux vaut refuser cette dictée que
+        // deviner. Le format est normalement connu dès le lancement.
+        guard let format = audioFormat else {
+            resolver.reset()
+            state = .failed("moteur en cours de préparation, réessayez")
+            Log.engine.error("dictée refusée : format du moteur pas encore résolu")
+            return
+        }
+
         let relay = BufferRelay()
         self.relay = relay
         capture.onBuffer = { buffer in relay.push(buffer) }
@@ -113,7 +131,7 @@ final class DictationController {
         do {
             // La capture démarre sans attendre l'ouverture du moteur : le relais
             // conserve les tampons produits entre-temps.
-            try capture.start(targetFormat: audioFormat ?? AudioCapture.whisperFormat)
+            try capture.start(targetFormat: format)
         } catch {
             resolver.reset()
             self.relay = nil
@@ -123,29 +141,30 @@ final class DictationController {
 
         state = .recording(mode)
         play(.start)
+        Log.audio.notice("capture démarrée (\(String(describing: mode), privacy: .public))")
 
         let engine = self.engine
         let locale = self.locale
         let strings = self.contextualStrings
         Task { [weak self] in
             do {
-                if await self?.audioFormat == nil {
-                    let format = await engine.preferredAudioFormat()
-                    await self?.cache(audioFormat: format)
-                }
                 try await engine.start(locale: locale, contextualStrings: strings)
+                Log.engine.notice("moteur ouvert")
                 relay.attach(to: engine)
             } catch {
+                Log.engine.error("ouverture du moteur : \(error.localizedDescription, privacy: .public)")
                 await self?.abortCapture(reason: error.localizedDescription)
             }
         }
     }
 
     private func endCapture() {
+        let samples = capture.sampleCount
         capture.stop()
         capture.onBuffer = nil
         play(.stop)
         state = .transcribing
+        Log.audio.notice("capture arrêtée, \(samples) échantillons accumulés")
 
         let engine = self.engine
         let relay = self.relay
@@ -153,10 +172,13 @@ final class DictationController {
 
         Task { [weak self] in
             await relay?.drain()
+            Log.engine.notice("relais vidé, finalisation du moteur")
             do {
                 let text = try await engine.finish()
+                Log.engine.notice("transcription : \(text.count) caractères")
                 await self?.deliver(text)
             } catch {
+                Log.engine.error("transcription : \(error.localizedDescription, privacy: .public)")
                 await self?.abortCapture(reason: error.localizedDescription)
             }
         }

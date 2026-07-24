@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = DictationController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Log.lifecycle.notice("applicationDidFinishLaunching")
         controller.activate()
     }
 

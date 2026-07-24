@@ -28,12 +28,15 @@ final class BufferRelay: @unchecked Sendable {
         continuation.yield(buffer)
     }
 
+    private(set) var delivered = 0
+
     /// Démarre l'acheminement vers le moteur, en commençant par ce qui attend déjà.
     func attach(to engine: TranscriptionEngine) {
         guard pump == nil else { return }
-        pump = Task {
+        pump = Task { [weak self] in
             for await buffer in stream {
                 await engine.feed(buffer)
+                self?.delivered += 1
             }
         }
     }
@@ -42,6 +45,7 @@ final class BufferRelay: @unchecked Sendable {
     func drain() async {
         continuation.finish()
         await pump?.value
+        Log.audio.notice("relais : \(self.delivered) tampons livrés au moteur")
     }
 
     func cancel() {

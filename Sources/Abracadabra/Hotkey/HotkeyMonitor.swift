@@ -69,30 +69,35 @@ final class HotkeyMonitor {
 
         let context = Unmanaged.passUnretained(self).toOpaque()
         let installStatus = InstallEventHandler(
-            GetEventDispatcherTarget(),
+            GetApplicationEventTarget(),
             hotkeyEventHandler,
             eventTypes.count,
             &eventTypes,
             context,
             &handlerRef
         )
-        guard installStatus == noErr else { return false }
+        guard installStatus == noErr else {
+            Log.hotkey.error("InstallEventHandler a échoué : \(installStatus)")
+            return false
+        }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x41425241 /* "ABRA" */), id: 1)
         let registerStatus = RegisterEventHotKey(
             combination.keyCode,
             combination.modifiers,
             hotKeyID,
-            GetEventDispatcherTarget(),
+            GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
         guard registerStatus == noErr else {
+            Log.hotkey.error("RegisterEventHotKey a échoué : \(registerStatus)")
             unregister()
             return false
         }
 
         self.combination = combination
+        Log.hotkey.notice("raccourci armé : \(combination.displayString, privacy: .public)")
         return true
     }
 
@@ -109,6 +114,7 @@ final class HotkeyMonitor {
     }
 
     fileprivate func dispatch(isDown: Bool) {
+        Log.hotkey.notice("événement \(isDown ? "enfoncé" : "relâché", privacy: .public)")
         onEvent?(isDown)
     }
 
