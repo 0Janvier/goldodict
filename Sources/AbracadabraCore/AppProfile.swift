@@ -140,6 +140,11 @@ public struct ProfileSet: Equatable, Sendable {
             ?? .redaction
     }
 
+    /// Profil désigné par son nom, source de vérité pour l'interface de réglages.
+    public func profile(named name: String) -> AppProfile? {
+        profiles.first { $0.name == name }
+    }
+
     public mutating func replace(_ profile: AppProfile) {
         if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
             profiles[index] = profile

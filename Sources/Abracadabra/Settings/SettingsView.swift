@@ -9,12 +9,16 @@ struct SettingsView: View {
         TabView {
             GeneralSettings(controller: controller)
                 .tabItem { Label("Général", systemImage: "gearshape") }
+            CorrectionSettings(controller: controller)
+                .tabItem { Label("Correction", systemImage: "wand.and.sparkles") }
             PunctuationSettings(controller: controller)
                 .tabItem { Label("Ponctuation", systemImage: "text.quote") }
             LexiconSettings(controller: controller)
                 .tabItem { Label("Lexique", systemImage: "character.book.closed") }
+            ProfileSettings(controller: controller)
+                .tabItem { Label("Profils", systemImage: "app.badge.checkmark") }
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 620, height: 500)
     }
 }
 
@@ -134,6 +138,154 @@ private struct PermissionRow: View {
                 Button("Ouvrir les Réglages") { PermissionGuard.openSettings(for: kind) }
             }
         }
+    }
+}
+
+// MARK: - Correction
+
+private struct CorrectionSettings: View {
+    let controller: DictationController
+    @State private var availability: (apple: Bool, ollama: Bool) = (false, false)
+
+    var body: some View {
+        Form {
+            Section("Relecture par un modèle local") {
+                Toggle("Corriger la dictée avant insertion", isOn: enabledBinding)
+                Text("Le modèle rétablit la ponctuation, les accents et les accords, et supprime les hésitations. Il ne reformule pas et ne quitte jamais cet ordinateur.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Modèles") {
+                CorrectorRow(
+                    label: "Apple, sur l'appareil",
+                    detail: availability.apple
+                        ? "prêt, utilisé en premier"
+                        : (AppleFoundationCorrector.unavailabilityReason ?? "indisponible"),
+                    ready: availability.apple
+                )
+                CorrectorRow(
+                    label: "Ollama — \(controller.preferences.ollamaModel)",
+                    detail: availability.ollama
+                        ? "prêt, prend le relais en cas de refus ou de lenteur"
+                        : "démon arrêté, aucun repli disponible",
+                    ready: availability.ollama
+                )
+                Text("Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale. Ollama prend alors le relais, sans quoi la dictée passerait sans correction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Fidélité") {
+                LabeledContent("Mots à conserver") {
+                    HStack {
+                        Slider(value: retentionBinding, in: 0.5...0.95, step: 0.05)
+                            .frame(width: 180)
+                        Text("\(Int(controller.preferences.correctionRetention * 100)) %")
+                            .monospacedDigit()
+                            .frame(width: 44, alignment: .trailing)
+                    }
+                }
+                Text("Une correction qui remplace davantage de mots que ce seuil est écartée, et le texte brut inséré à sa place. Abaisser le seuil laisse passer des reformulations.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .task { availability = await controller.correctorAvailability() }
+    }
+
+    private var enabledBinding: Binding<Bool> {
+        Binding(
+            get: { controller.preferences.correctionEnabled },
+            set: { controller.preferences.correctionEnabled = $0 }
+        )
+    }
+
+    private var retentionBinding: Binding<Double> {
+        Binding(
+            get: { controller.preferences.correctionRetention },
+            set: { controller.setCorrectionRetention($0) }
+        )
+    }
+}
+
+private struct CorrectorRow: View {
+    let label: String
+    let detail: String
+    let ready: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: ready ? "checkmark.circle.fill" : "minus.circle")
+                .foregroundStyle(ready ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Profils
+
+private struct ProfileSettings: View {
+    let controller: DictationController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Le traitement s'adapte à l'application dans laquelle vous dictez. Une application non répertoriée reçoit le premier profil de la liste.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            List {
+                ForEach(controller.profileStore.profiles.profiles) { profile in
+                    Section(profile.name) {
+                        Toggle("Correction par le modèle local", isOn: binding(id: profile.id, \.correctText))
+                        Toggle("Commandes de ponctuation", isOn: binding(id: profile.id, \.punctuationCommands))
+                        Toggle("Majuscule en début de phrase", isOn: binding(id: profile.id, \.capitalizeSentences))
+                        Toggle("Typographie française", isOn: binding(id: profile.id, \.frenchTypography))
+                        Toggle("Lexique de vocabulaire", isOn: binding(id: profile.id, \.applyLexicon))
+                        Text(profile.bundleIdentifiers.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+
+            HStack {
+                Button("Ouvrir le fichier") {
+                    NSWorkspace.shared.activateFileViewerSelecting([ProfileStore.fileURL])
+                }
+                Spacer()
+                Text("Ajouter une application se fait dans le fichier profils.json")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(20)
+    }
+
+    /// Le binding relit le profil dans le magasin à chaque accès.
+    ///
+    /// Capturer la valeur rendue par `ForEach` donnerait une copie figée : la vue
+    /// afficherait un état qui n'est plus celui du magasin, et une écriture partirait
+    /// de cette copie périmée en réinscrivant au passage les réglages voisins.
+    private func binding(
+        id: String,
+        _ keyPath: WritableKeyPath<AppProfile, Bool>
+    ) -> Binding<Bool> {
+        Binding(
+            get: { controller.profileStore.profiles.profile(named: id)?[keyPath: keyPath] ?? false },
+            set: { newValue in
+                guard var updated = controller.profileStore.profiles.profile(named: id) else { return }
+                updated[keyPath: keyPath] = newValue
+                controller.updateProfile(updated)
+            }
+        )
     }
 }
 

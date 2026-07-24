@@ -68,6 +68,30 @@ La ponctuation passe avant le lexique pour qu'une entrée de lexique puisse cont
 
 Les substitutions n'utilisent **pas** `NSRegularExpression`, incapable d'ignorer les diacritiques. `String.range(of:options:)` avec `.diacriticInsensitive` le fait nativement, et les bornes de mots sont vérifiées à la main — ce qui traite correctement l'apostrophe typographique, devant laquelle `\b` se comporte de façon inattendue.
 
+### Le garde-fou de correction est la pièce maîtresse
+
+Un modèle de langue à qui l'on demande de « corriger » peut dériver vers la reformulation. En matière juridique, remplacer « était expiré » par « semblait expiré » change la portée d'un moyen sans qu'une relecture rapide le voie.
+
+`CorrectionGuard` compare le texte corrigé au brut sur deux axes : la part des mots conservés (seuil 0,75) et le rapport des longueurs (0,6 à 1,4). Les mots sont normalisés sans casse ni diacritiques, précisément parce que rétablir les accents fait partie du travail attendu et ne doit pas compter comme une altération. Le décompte se fait en **sac de mots** et non en ensemble : un modèle qui répéterait dix fois un mot présent au brut ne doit pas passer pour fidèle.
+
+Hors des bornes, la correction est refusée et le brut inséré. Le fait est signalé à l'écran par un état `notice` distinct de `failed` — une correction écartée n'est pas une panne, mais l'utilisateur doit le savoir.
+
+### Ordre des correcteurs et repli
+
+Apple d'abord pour la latence. Ollama prend le relais sur trois motifs : modèle indisponible, refus de contenu (`GenerationError.guardrailViolation`, cas réel en pénal), ou dépassement du délai de quatre secondes.
+
+Une correction jugée **infidèle** n'entraîne en revanche aucune seconde tentative : le second modèle produirait la même dérive à partir du même texte. On garde le brut.
+
+**Mesure sur cette machine** : `qwen3:8b` répond en 1,6 s à chaud contre 7,8 s à froid, dont 6,1 s de chargement. D'où le préchargement au lancement — sans lui, la première correction de la journée dépasserait le délai pour rien.
+
+### Le profil est arrêté à l'enfoncement de la touche
+
+`NSWorkspace.shared.frontmostApplication` est relevé dans `beginCapture`, jamais dans `deliver`. Entre les deux, l'application au premier plan a pu changer, et le texte serait alors traité selon les règles d'une fenêtre qui n'est plus la cible.
+
+### Bindings sur une source de vérité, pas sur une copie
+
+Piège rencontré dans l'onglet Profils : construire un `Binding` à partir de la valeur rendue par `ForEach` capture une **copie figée**. La vue affiche alors un état périmé, et toute écriture repart de cette copie en réinscrivant au passage les réglages voisins — le fichier de profils s'était retrouvé avec deux valeurs erronées. Le binding relit désormais le profil dans son magasin à chaque accès.
+
 ## Contraintes de la machine
 
 ### Signature et autorisations

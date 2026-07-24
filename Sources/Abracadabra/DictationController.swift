@@ -96,6 +96,20 @@ final class DictationController {
         select(engine: identifier == "whisper-mlx" ? whisperEngine : appleEngine)
     }
 
+    func updateProfile(_ profile: AppProfile) {
+        profileStore.update(profile)
+    }
+
+    func correctorAvailability() async -> (apple: Bool, ollama: Bool) {
+        await corrector.availability()
+    }
+
+    func setCorrectionRetention(_ value: Double) {
+        preferences.correctionRetention = value
+        let thresholds = CorrectionGuard.Thresholds(retention: value)
+        Task { [corrector] in await corrector.setThresholds(thresholds) }
+    }
+
     /// Moteurs disponibles, dans l'ordre d'affichage.
     let appleEngine = AppleSpeechEngine()
     private(set) var whisperEngine = WhisperMLXEngine()

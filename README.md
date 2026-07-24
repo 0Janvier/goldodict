@@ -24,6 +24,33 @@ La capture démarre dès l'enfoncement de la touche, aucun début de phrase n'es
 
 Le choix se fait dans le menu ou dans les réglages. Whisper s'appuie sur un démon Python maintenu en vie pour éviter de recharger le modèle à chaque dictée.
 
+## Correction locale
+
+La dictée passe, avant insertion, par un modèle de langue qui rétablit la ponctuation, les accents et les accords, et supprime les hésitations. **Il ne reformule pas** et ne quitte jamais l'ordinateur.
+
+| Modèle | Rôle |
+|---|---|
+| **Apple, sur l'appareil** | Utilisé en premier. Instantané, aucune dépendance |
+| **Ollama `qwen3:8b`** | Prend le relais si Apple refuse le contenu, est indisponible ou trop lent |
+
+Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale. Le repli existe pour cela. Il est préchargé au lancement — à froid, une correction demande huit secondes contre une et demie à chaud.
+
+**Garde-fou de fidélité.** Un modèle chargé de corriger peut glisser vers la reformulation, et « le délai était expiré » devenir « le délai semblait expiré ». Chaque correction est donc comparée au texte brut : si trop de mots ont changé, ou si la longueur s'écarte trop, **la correction est écartée et le texte brut inséré**, avec mention à l'écran. Le seuil se règle dans l'onglet Correction.
+
+Passé quatre secondes, la correction est abandonnée et le texte brut inséré : un texte imparfait vaut mieux qu'un texte qui n'arrive pas.
+
+## Profils par application
+
+Le traitement s'adapte à l'application dans laquelle vous dictez, relevée au moment où vous enfoncez le raccourci.
+
+| Profil | Applications | Traitement |
+|---|---|---|
+| **Rédaction** (défaut) | Word, Mail, Pages, Notes, Goldocab | Tout : correction, ponctuation, majuscules, insécables |
+| **Brut** | Ghostty, Terminal, Xcode, VS Code, Cursor | Rien. Le texte arrive tel qu'il a été dit |
+| **Messagerie** | Slack, Messages, WhatsApp, Telegram | Ponctuation et majuscules, sans correction ni insécables |
+
+Fichier : `~/Library/Application Support/Abracadabra/profils.json`. Une application non répertoriée reçoit le premier profil de la liste.
+
 ## Vocabulaire personnalisé
 
 Deux mécanismes cumulables, tous deux alimentés par le même fichier.
