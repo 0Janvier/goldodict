@@ -21,8 +21,16 @@ final class AppleSpeechEngine: TranscriptionEngine {
         await session.preferredAudioFormat()
     }
 
-    func start(locale: Locale, contextualStrings: [String]) async throws {
-        try await session.start(locale: locale, contextualStrings: contextualStrings)
+    func start(
+        locale: Locale,
+        contextualStrings: [String],
+        onPartialText: (@Sendable (String) -> Void)?
+    ) async throws {
+        try await session.start(
+            locale: locale,
+            contextualStrings: contextualStrings,
+            onPartialText: onPartialText
+        )
     }
 
     func feed(_ buffer: AVAudioPCMBuffer) async {
@@ -87,7 +95,11 @@ private actor Session {
         return format
     }
 
-    func start(locale: Locale, contextualStrings: [String]) async throws {
+    func start(
+        locale: Locale,
+        contextualStrings: [String],
+        onPartialText: (@Sendable (String) -> Void)?
+    ) async throws {
         await cancel()
 
         guard SpeechTranscriber.isAvailable else {
@@ -97,7 +109,15 @@ private actor Session {
             throw TranscriptionEngineError.localeUnsupported(locale.identifier)
         }
 
-        let transcriber = SpeechTranscriber(locale: supported, preset: .progressiveTranscription)
+        // Le contenu des presets n'est pas documenté : l'initialiseur explicite est
+        // le seul moyen de garantir que les résultats volatils seront émis, sans
+        // lesquels rien ne peut s'afficher pendant que l'utilisateur parle.
+        let transcriber = SpeechTranscriber(
+            locale: supported,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: []
+        )
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
             throw TranscriptionEngineError.assetsMissing(supported.identifier)
         }
@@ -116,12 +136,22 @@ private actor Session {
 
         // Les résultats sont consommés en tâche de fond dès maintenant : la séquence
         // se termine d'elle-même lorsque l'analyseur est finalisé.
+        //
+        // Deux natures de résultat cohabitent. Les résultats finaux s'ajoutent au
+        // texte définitif. Les volatils sont des hypothèses de travail que le moteur
+        // remplace à mesure qu'il écoute : ils ne s'accumulent pas, seul le dernier
+        // vaut, et il est concaténé au texte acquis pour l'affichage.
         collector = Task {
-            var text = AttributedString()
-            for try await result in transcriber.results where result.isFinal {
-                text += result.text
+            var settled = AttributedString()
+            for try await result in transcriber.results {
+                if result.isFinal {
+                    settled += result.text
+                    onPartialText?(String(settled.characters))
+                } else {
+                    onPartialText?(String(settled.characters) + String(result.text.characters))
+                }
             }
-            return String(text.characters)
+            return String(settled.characters)
         }
 
         self.transcriber = transcriber

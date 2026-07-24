@@ -38,7 +38,13 @@ final class WhisperMLXEngine: TranscriptionEngine {
         AudioCapture.whisperFormat
     }
 
-    func start(locale: Locale, contextualStrings: [String]) async throws {
+    /// Whisper transcrit par lots : il n'a rien à émettre pendant que l'on parle.
+    /// `onPartialText` est donc ignoré, ce qui est sa nature et non une lacune.
+    func start(
+        locale: Locale,
+        contextualStrings: [String],
+        onPartialText: (@Sendable (String) -> Void)?
+    ) async throws {
         await session.begin(locale: locale, contextualStrings: contextualStrings, model: model)
     }
 

@@ -14,6 +14,8 @@ import SwiftUI
 @MainActor
 final class RecordingOverlay {
 
+    static let panelWidth: CGFloat = 420
+
     private var panel: NSPanel?
     private let model = OverlayModel()
 
@@ -22,7 +24,7 @@ final class RecordingOverlay {
 
         if panel == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 300, height: 66),
+                contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 66),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -35,7 +37,12 @@ final class RecordingOverlay {
             panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             panel.hidesOnDeactivate = false
-            panel.contentView = NSHostingView(rootView: OverlayView(model: model))
+
+            // `contentViewController` fait suivre la fenêtre à la taille intrinsèque
+            // de la vue, ce que `contentView` ne fait pas. L'origine restant fixe et
+            // AppKit comptant depuis le bas, la pastille s'étend vers le haut quand
+            // le texte s'allonge, au lieu de déborder sous l'écran.
+            panel.contentViewController = NSHostingController(rootView: OverlayView(model: model))
             self.panel = panel
         }
 
@@ -47,8 +54,38 @@ final class RecordingOverlay {
         model.state = state
     }
 
+    /// Texte provisoire affiché pendant la dictée.
+    ///
+    /// Les résultats volatils arrivent plusieurs fois par seconde ; redessiner à
+    /// chaque fois ferait travailler le thread principal pour rien, alors que l'œil
+    /// ne distingue pas mieux au-delà de dix rafraîchissements par seconde.
+    func update(partialText: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastTextUpdate >= 0.1 || partialText.isEmpty else {
+            pendingText = partialText
+            return
+        }
+        lastTextUpdate = now
+        pendingText = nil
+        model.partialText = partialText
+    }
+
+    private var lastTextUpdate: TimeInterval = 0
+    private var pendingText: String?
+
+    /// Force l'affichage du dernier texte reçu, sans attendre la fenêtre de
+    /// rafraîchissement : appelé à la fin de la dictée pour ne rien perdre.
+    func flushPartialText() {
+        if let pendingText {
+            model.partialText = pendingText
+            self.pendingText = nil
+        }
+    }
+
     func hide() {
         panel?.orderOut(nil)
+        model.partialText = ""
+        pendingText = nil
     }
 
     /// Bas de l'écran actif, au centre : hors du champ de saisie, toujours vu.
@@ -69,34 +106,59 @@ final class RecordingOverlay {
 @MainActor
 private final class OverlayModel {
     var state: DictationState = .idle
+    var partialText: String = ""
 }
 
 private struct OverlayView: View {
     let model: OverlayModel
 
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: model.state.symbolName)
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(tint)
-                .symbolEffect(.pulse, isActive: isRecording)
+    /// Au-delà, seule la fin est montrée : c'est le mot en cours qui intéresse
+    /// celui qui parle, pas le début de sa phrase.
+    private static let visibleCharacters = 220
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: model.state.symbolName)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(tint)
+                    .symbolEffect(.pulse, isActive: isRecording)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+
+            if !visibleText.isEmpty {
+                Text(visibleText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.disabled)
+            }
         }
         .padding(.horizontal, 18)
-        .frame(width: 300, height: 66, alignment: .leading)
+        .padding(.vertical, 14)
+        .frame(width: RecordingOverlay.panelWidth, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(tint.opacity(0.35), lineWidth: 1)
         )
+        .animation(.easeOut(duration: 0.12), value: model.partialText.isEmpty)
+    }
+
+    private var visibleText: String {
+        let text = model.partialText
+        guard text.count > Self.visibleCharacters else { return text }
+        return "…" + String(text.suffix(Self.visibleCharacters))
     }
 
     private var isRecording: Bool {

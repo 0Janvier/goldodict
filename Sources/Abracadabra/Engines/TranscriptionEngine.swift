@@ -19,10 +19,17 @@ protocol TranscriptionEngine: AnyObject, Sendable {
     func preferredAudioFormat() async -> AVAudioFormat
 
     /// Prépare une session de transcription.
-    /// - Parameter contextualStrings: vocabulaire dont le moteur doit tenir compte
-    ///   en amont — noms propres, termes de procédure — afin de ne pas avoir à
-    ///   corriger après coup ce qu'il pouvait reconnaître correctement.
-    func start(locale: Locale, contextualStrings: [String]) async throws
+    /// - Parameters:
+    ///   - contextualStrings: vocabulaire dont le moteur doit tenir compte en amont
+    ///     — noms propres, termes de procédure — afin de ne pas avoir à corriger
+    ///     après coup ce qu'il pouvait reconnaître correctement.
+    ///   - onPartialText: texte provisoire, émis pendant la dictée pour l'affichage.
+    ///     Les moteurs qui transcrivent par lots ne l'appellent jamais.
+    func start(
+        locale: Locale,
+        contextualStrings: [String],
+        onPartialText: (@Sendable (String) -> Void)?
+    ) async throws
 
     /// Livre un tampon au format rendu par `preferredAudioFormat()`.
     func feed(_ buffer: AVAudioPCMBuffer) async

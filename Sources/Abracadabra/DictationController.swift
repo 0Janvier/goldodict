@@ -246,9 +246,16 @@ final class DictationController {
         let engine = self.engine
         let locale = self.locale
         let strings = self.contextualStrings
+        let onPartial: @Sendable (String) -> Void = { [weak self] text in
+            Task { @MainActor in self?.showPartial(text) }
+        }
         Task { [weak self] in
             do {
-                try await engine.start(locale: locale, contextualStrings: strings)
+                try await engine.start(
+                    locale: locale,
+                    contextualStrings: strings,
+                    onPartialText: onPartial
+                )
                 Log.engine.notice("moteur ouvert")
                 relay.attach(to: engine)
             } catch {
@@ -258,10 +265,17 @@ final class DictationController {
         }
     }
 
+    /// Texte provisoire du moteur, affiché pendant que l'utilisateur parle.
+    private func showPartial(_ text: String) {
+        guard state.isBusy else { return }
+        overlay.update(partialText: text)
+    }
+
     private func endCapture() {
         let samples = capture.sampleCount
         capture.stop()
         capture.onBuffer = nil
+        overlay.flushPartialText()
         play(.stop)
         state = .transcribing
         Log.audio.debug("capture arrêtée, \(samples) échantillons accumulés")
