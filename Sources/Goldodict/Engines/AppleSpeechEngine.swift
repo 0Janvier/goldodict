@@ -70,16 +70,6 @@ final class AppleSpeechEngine: TranscriptionEngine {
             throw TranscriptionEngineError.localeUnsupported(locale.identifier)
         }
         try await install(makeTranscriber(locale: supported), locale: supported)
-
-        // Les modèles installés sont soumis à un quota ; la réservation garantit
-        // que celui du français ne sera pas évincé au profit d'une autre langue.
-        do {
-            try await AssetInventory.reserve(locale: supported)
-        } catch {
-            // Sans effet sur la dictée du jour : une réservation refusée signifie
-            // seulement que le modèle pourra être évincé plus tard.
-            Log.engine.notice("réservation du modèle refusée : \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     /// Rend le module utilisable, en installant l'asset de langue si nécessaire.
@@ -105,6 +95,20 @@ final class AppleSpeechEngine: TranscriptionEngine {
             throw TranscriptionEngineError.localeUnsupported(name)
         default:
             break
+        }
+
+        // La réservation, elle non plus, ne survit pas à l'inactivité : le système
+        // « peut désabonner l'app d'un asset inutilisé depuis un moment » (doc Apple),
+        // et l'emporte avec elle sans le dire. Sans réservation active, la requête
+        // ci-dessous s'obtient et `downloadAndInstall()` rend la main sans erreur,
+        // mais le statut reste `.supported` — vérifié à la sonde, y compris après
+        // plusieurs secondes d'attente. Ce fut la cause réelle du bogue rapporté :
+        // la première correction (statut vérifié à chaque dictée) était nécessaire
+        // mais pas suffisante, la réservation n'étant refaite qu'au lancement.
+        do {
+            try await AssetInventory.reserve(locale: locale)
+        } catch {
+            Log.engine.notice("réservation du modèle \(name, privacy: .public) refusée : \(error.localizedDescription, privacy: .public)")
         }
 
         // `nil` n'est pas un succès : le module n'est pas installé et le système
