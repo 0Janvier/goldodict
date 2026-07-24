@@ -24,9 +24,36 @@ struct AbracadabraApp: App {
 struct MenuView: View {
     let controller: DictationController
 
+    private var engineLabel: String {
+        controller.currentEngineIdentifier == "apple"
+            ? controller.appleEngine.displayName
+            : controller.whisperEngine.displayName
+    }
+
     var body: some View {
         Text(controller.state.label)
         Text("Dicter : \(controller.combination.displayString) — bref pour basculer, maintenu pour parler")
+
+        Divider()
+
+        Menu("Moteur : \(engineLabel)") {
+            Button {
+                controller.select(engine: controller.appleEngine)
+            } label: {
+                Label(
+                    controller.appleEngine.displayName,
+                    systemImage: controller.currentEngineIdentifier == "apple" ? "checkmark" : ""
+                )
+            }
+            Button {
+                controller.select(engine: controller.whisperEngine)
+            } label: {
+                Label(
+                    controller.whisperEngine.displayName,
+                    systemImage: controller.currentEngineIdentifier == "whisper-mlx" ? "checkmark" : ""
+                )
+            }
+        }
 
         Divider()
 

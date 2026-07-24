@@ -47,13 +47,49 @@ final class DictationController {
     private var resolver = TriggerResolver()
     private let hotkey = HotkeyMonitor()
     private let capture = AudioCapture()
-    private var engine: TranscriptionEngine = AppleSpeechEngine()
+    @ObservationIgnored
+    private var engine: TranscriptionEngine
+
+    init() {
+        engine = appleEngine
+    }
+
+    /// Change de moteur. Le format audio est réinterrogé, les deux moteurs n'ayant
+    /// pas les mêmes exigences.
+    func select(engine newEngine: TranscriptionEngine, force: Bool = false) {
+        guard !state.isBusy, force || newEngine.identifier != engine.identifier else { return }
+        engine = newEngine
+        audioFormat = nil
+        Log.engine.notice("moteur sélectionné : \(newEngine.identifier, privacy: .public)")
+
+        Task { [weak self] in
+            let format = await newEngine.preferredAudioFormat()
+            await self?.cache(audioFormat: format)
+        }
+    }
+
+    var currentEngineIdentifier: String { engine.identifier }
 
     /// Langue de dictée. Le français est le seul usage prévu, mais le moteur Apple
     /// exige une locale explicite et le choix sera exposé dans les réglages.
     var locale = Locale(identifier: "fr_FR")
 
     let lexiconStore = LexiconStore()
+
+    /// Moteurs disponibles, dans l'ordre d'affichage.
+    let appleEngine = AppleSpeechEngine()
+    private(set) var whisperEngine = WhisperMLXEngine()
+
+    /// Change le modèle Whisper. L'instance est remplacée plutôt que mutée, le
+    /// modèle étant immuable par construction.
+    func selectWhisperModel(_ model: String) {
+        guard !state.isBusy, model != whisperEngine.model else { return }
+        let wasSelected = currentEngineIdentifier == whisperEngine.identifier
+        let previous = whisperEngine
+        whisperEngine = WhisperMLXEngine(model: model)
+        Task { await previous.shutdown() }
+        if wasSelected { select(engine: whisperEngine, force: true) }
+    }
 
     /// Chaîne de traitement du texte brut : ponctuation, lexique, typographie.
     private var pipeline = TranscriptPipeline()
@@ -94,7 +130,7 @@ final class DictationController {
         // Le modèle de langue peut demander un téléchargement au premier lancement.
         // L'anticiper évite que la première dictée échoue faute de modèle.
         let locale = self.locale
-        let engine = self.engine
+        let engine = self.appleEngine as TranscriptionEngine
         Task { [weak self] in
             do {
                 try await AppleSpeechEngine.prepareAssets(for: locale)
