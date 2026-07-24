@@ -39,14 +39,18 @@ final class DictationController {
     private var audioFormat: AVAudioFormat?
 
     /// Enregistre le raccourci global. À appeler une fois l'application lancée.
-    func activate(combination: HotkeyMonitor.Combination = .controlOptionSpace) {
+    /// Raccourci actuellement armé, affiché dans le menu.
+    private(set) var combination: HotkeyMonitor.Combination = .commandShiftJ
+
+    func activate(combination: HotkeyMonitor.Combination = .commandShiftJ) {
         hotkey.onEvent = { [weak self] isDown in
             MainActor.assumeIsolated {
                 self?.handleHotkey(isDown: isDown)
             }
         }
+        self.combination = combination
         if !hotkey.register(combination) {
-            state = .failed("raccourci déjà pris par une autre application")
+            state = .failed("raccourci \(combination.displayString) déjà pris")
         }
 
         // Les deux autorisations sont demandées au lancement plutôt qu'au milieu

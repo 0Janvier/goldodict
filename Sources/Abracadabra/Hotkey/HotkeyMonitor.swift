@@ -15,13 +15,37 @@ final class HotkeyMonitor {
         /// Masque Carbon : `controlKey`, `optionKey`, `cmdKey`, `shiftKey`.
         var modifiers: UInt32
 
-        /// ⌃⌥Espace. Libre sur macOS et sans collision avec les raccourcis Goldocab,
-        /// tous fondés sur ⌘. Le code de touche vise la barre d'espace physique,
-        /// donc la disposition AZERTY est sans incidence.
-        static let controlOptionSpace = Combination(
-            keyCode: UInt32(kVK_Space),
-            modifiers: UInt32(controlKey | optionKey)
+        /// ⌘⇧J. La touche J occupe la même position physique en AZERTY qu'en QWERTY,
+        /// le code de touche virtuel est donc fiable sans traitement particulier.
+        ///
+        /// À ne pas confondre avec ⌃⌥Espace, que macOS réserve pour « Sélectionner
+        /// la source de saisie suivante » et qu'un raccourci applicatif ne peut pas
+        /// capter.
+        static let commandShiftJ = Combination(
+            keyCode: UInt32(kVK_ANSI_J),
+            modifiers: UInt32(cmdKey | shiftKey)
         )
+
+        /// Représentation lisible, dans l'ordre d'affichage retenu par macOS.
+        var displayString: String {
+            var symbols = ""
+            if modifiers & UInt32(controlKey) != 0 { symbols += "⌃" }
+            if modifiers & UInt32(optionKey) != 0 { symbols += "⌥" }
+            if modifiers & UInt32(shiftKey) != 0 { symbols += "⇧" }
+            if modifiers & UInt32(cmdKey) != 0 { symbols += "⌘" }
+            return symbols + Self.keyLabel(for: keyCode)
+        }
+
+        private static func keyLabel(for keyCode: UInt32) -> String {
+            switch Int(keyCode) {
+            case kVK_Space: return "Espace"
+            case kVK_ANSI_J: return "J"
+            case kVK_ANSI_K: return "K"
+            case kVK_ANSI_D: return "D"
+            case kVK_F5: return "F5"
+            default: return "touche \(keyCode)"
+            }
+        }
     }
 
     /// Appelé sur la boucle principale à chaque enfoncement (`true`) et relâchement (`false`).

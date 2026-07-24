@@ -26,6 +26,7 @@ struct MenuView: View {
 
     var body: some View {
         Text(controller.state.label)
+        Text("Dicter : \(controller.combination.displayString) — bref pour basculer, maintenu pour parler")
 
         Divider()
 
