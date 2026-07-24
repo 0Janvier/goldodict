@@ -3,7 +3,9 @@ import SwiftUI
 
 @main
 struct AbracadabraApp: App {
-    @State private var controller = DictationController()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
+    private var controller: DictationController { delegate.controller }
 
     var body: some Scene {
         MenuBarExtra {
