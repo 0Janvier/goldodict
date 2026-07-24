@@ -15,9 +15,22 @@ final class DictationController {
         didSet {
             reflectStateInOverlay()
             onStateChange?(state)
+            if case .failed(let message) = state { lastFailure = message }
         }
     }
     private(set) var lastTranscript: String = ""
+
+    /// Dernier échec, indépendant de `state`.
+    ///
+    /// `state` revient à `.idle` cinq secondes après un échec — la pastille flottante
+    /// ne doit pas rester rouge indéfiniment. Le panneau de la barre des menus, lui,
+    /// est consulté après coup : l'erreur y reste jusqu'à ce qu'une nouvelle dictée
+    /// démarre ou que l'utilisateur la referme.
+    private(set) var lastFailure: String?
+
+    func dismissFailure() {
+        lastFailure = nil
+    }
 
     /// Prévient la barre des menus. L'icône du `NSStatusItem` est une image AppKit,
     /// hors de portée du suivi d'observation de SwiftUI : sans ce rappel, elle
@@ -124,6 +137,11 @@ final class DictationController {
 
     var microphoneGranted: Bool { PermissionGuard.microphoneStatus == .authorized }
     var accessibilityGranted: Bool { PermissionGuard.hasAccessibility() }
+
+    /// Niveau sonore instantané. Même source que la pastille flottante
+    /// (`overlay.levelProvider`) : le panneau de la barre des menus peut rester
+    /// ouvert pendant une dictée sans dupliquer la capture.
+    var currentLevel: Float { capture.level }
 
     /// Recharge la chaîne de traitement depuis le lexique et les réglages.
     func reloadPipeline() {
@@ -357,6 +375,7 @@ final class DictationController {
             return
         }
 
+        lastFailure = nil
         state = .recording(mode)
         play(.start)
         Log.audio.notice("capture démarrée (\(String(describing: mode), privacy: .public))")

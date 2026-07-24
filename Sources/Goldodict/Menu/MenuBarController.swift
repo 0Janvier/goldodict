@@ -89,6 +89,15 @@ final class MenuBarController {
         popover.performClose(nil)
     }
 
+    /// Profil qui s'appliquerait à une dictée lancée maintenant depuis le menu, déduit
+    /// de l'application relevée avant l'ouverture du panneau — la même que `dictate()`
+    /// vise. Lu par `MenuPanel` à chaque apparition, `previousApplication` n'étant connu
+    /// qu'à ce moment-là.
+    var anticipatedProfile: (name: String, application: String?) {
+        let profile = controller.profileStore.profiles.profile(for: previousApplication?.bundleIdentifier)
+        return (profile.name, previousApplication?.localizedName)
+    }
+
     // MARK: - Actions du panneau
 
     /// Le panneau se ferme avant que la dictée ne démarre : il masquerait la fenêtre
