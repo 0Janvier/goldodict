@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Goldodict — icône d'application, déclinaison petites tailles (16 et 32 px).
+
+  Sous 48 px, les deux arcs de son se referment sur la bouche et l'icône devient
+  une tache. Ils disparaissent ici, la visière s'élargit et les traits épaississent :
+  il ne reste que la silhouette de la famille Goldo, casque et barre d'or, ce qui
+  suffit à identifier l'application dans le Dock ou une liste.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f6f8"/>
+      <stop offset="1" stop-color="#d7d7dd"/>
+    </linearGradient>
+    <linearGradient id="redCrest" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0303c"/>
+      <stop offset="1" stop-color="#9c1622"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185.1" ry="185.1"/>
+    </clipPath>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185.1" ry="185.1" fill="url(#bg)"/>
+
+  <g clip-path="url(#squircle)">
+    <g transform="translate(100 100) scale(3.21875)">
+
+      <path d="M128 18 L154 58 L102 58 Z"
+            fill="url(#redCrest)" stroke="#1f2733" stroke-width="7" stroke-linejoin="round"/>
+
+      <path d="M28 50 L228 50 L214 100 L42 100 Z"
+            fill="#23364e" stroke="#1f2733" stroke-width="8" stroke-linejoin="round"/>
+
+      <!-- Yeux, écartés et grossis : à 16 px, deux losanges rapprochés fusionnent. -->
+      <path d="M136 80 L192 66 L206 86 L150 100 Z"
+            fill="#ffcf3a" stroke="#1f2733" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M120 80 L64 66 L50 86 L106 100 Z"
+            fill="#ffcf3a" stroke="#1f2733" stroke-width="5" stroke-linejoin="round"/>
+
+      <!-- Bouche centrée : sans les arcs, rien ne justifie plus le décalage. -->
+      <rect x="52" y="146" width="152" height="56" rx="28"
+            fill="#23364e" stroke="#1f2733" stroke-width="8"/>
+      <rect x="72" y="164" width="112" height="20" rx="10" fill="#ffcf3a"/>
+
+    </g>
+  </g>
+</svg>

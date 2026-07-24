@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Goldodict — icône d'application.
+
+  Variante « La bouche parlante » : la barre d'or de la famille Goldo descend sous
+  la visière et devient une bouche, d'où sortent deux arcs de son.
+
+  Le dessin vit dans une grille de 256, celle de la planche d'origine ; il est
+  reporté dans un carré de 824 points centré dans un canevas de 1 024, marge que
+  macOS attend autour d'une icône d'application pour qu'elle s'aligne avec celles
+  du système.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f6f8"/>
+      <stop offset="1" stop-color="#d7d7dd"/>
+    </linearGradient>
+    <linearGradient id="redCrest" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e0303c"/>
+      <stop offset="1" stop-color="#9c1622"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185.1" ry="185.1"/>
+    </clipPath>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185.1" ry="185.1" fill="url(#bg)"/>
+
+  <g clip-path="url(#squircle)">
+    <g transform="translate(100 100) scale(3.21875)">
+
+      <!-- Crête, posée derrière la visière : elle en dépasse par le haut, comme sur
+           le casque, et son aplomb central rattrape le poids de la bouche. -->
+      <path d="M128 12 L152 52 L104 52 Z"
+            fill="url(#redCrest)" stroke="#1f2733" stroke-width="5" stroke-linejoin="round"/>
+
+      <!-- Visière -->
+      <path d="M38 44 L218 44 L206 88 L50 88 Z"
+            fill="#23364e" stroke="#1f2733" stroke-width="6" stroke-linejoin="round"/>
+
+      <!-- Yeux -->
+      <path d="M134 72 L178 60 L190 76 L146 88 Z"
+            fill="#ffcf3a" stroke="#1f2733" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M122 72 L78 60 L66 76 L110 88 Z"
+            fill="#ffcf3a" stroke="#1f2733" stroke-width="4" stroke-linejoin="round"/>
+
+      <!-- Bouche, et la barre d'or à l'intérieur -->
+      <rect x="46" y="140" width="126" height="46" rx="23"
+            fill="#23364e" stroke="#1f2733" stroke-width="6"/>
+      <rect x="62" y="156" width="94" height="14" rx="7" fill="#ffcf3a"/>
+
+      <!-- Arcs de son. Deux suffisent : à 32 px, un troisième se referme sur le
+           deuxième et la bouche devient illisible. -->
+      <g fill="none" stroke="#5b6b7a" stroke-linecap="round">
+        <path d="M188 145 a28 28 0 0 1 0 36" stroke-width="12"/>
+        <path d="M209 132 a48 48 0 0 1 0 62" stroke-width="10"/>
+      </g>
+
+    </g>
+  </g>
+</svg>
