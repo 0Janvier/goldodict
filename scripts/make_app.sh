@@ -11,8 +11,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/build/Abracadabra.app"
 SCRATCH="${ABRACADABRA_SCRATCH:-$HOME/.cache/abracadabra-build}"
+# Le bundle est assemblé et signé HORS de ~/Documents : fileproviderd y repose
+# com.apple.FinderInfo et com.apple.fileprovider.fpfs#P instantanément, et
+# codesign refuse tout bundle porteur de ces attributs. Un xattr -cr ne suffit
+# pas, les attributs réapparaissent avant la signature.
+APP="$SCRATCH/bundle/Abracadabra.app"
 SIGN_ID="${ABRACADABRA_SIGN_ID:-Developer ID Application: Sztulman Marc (6MTBLVHJ85)}"
 
 echo "→ swift build -c release (scratch : $SCRATCH)"
@@ -33,6 +37,9 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 [[ -f "$ROOT/Resources/lexique.default.json" ]] && \
     cp "$ROOT/Resources/lexique.default.json" "$APP/Contents/Resources/"
 [[ -d "$ROOT/sidecar" ]] && cp -R "$ROOT/sidecar" "$APP/Contents/Resources/sidecar"
+
+echo "→ purge des attributs étendus"
+xattr -cr "$APP"
 
 echo "→ signature ($SIGN_ID)"
 if ! security find-identity -v -p codesigning | grep -qF "$SIGN_ID"; then
