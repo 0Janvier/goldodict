@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Abracadabra</string>
+	<key>CFBundleDisplayName</key>
+	<string>Abracadabra</string>
+	<key>CFBundleIdentifier</key>
+	<string>fr.sztulman.abracadabra</string>
+	<key>CFBundleExecutable</key>
+	<string>Abracadabra</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Marc Sztulman</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Abracadabra a besoin du microphone pour transcrire votre dictée. L'audio est traité localement sur cet ordinateur et n'est jamais transmis à un tiers.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Abracadabra utilise la reconnaissance vocale locale de macOS pour convertir votre dictée en texte. Aucune donnée ne quitte cet ordinateur.</string>
+</dict>
+</plist>
