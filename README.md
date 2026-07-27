@@ -85,6 +85,14 @@ Emplacement : `~/Library/Application Support/Goldodict/lexique.json`, éditable 
 
 Le drapeau `biaiser` transmet le terme au moteur **avant** transcription (`contextualStrings` chez Apple, `initial_prompt` chez Whisper) : mieux vaut que le moteur reconnaisse correctement que d'avoir à rattraper après coup.
 
+**Le biais est un budget, pas un interrupteur.** Les termes biaisés sont concaténés en un prompt que Whisper plafonne à 223 tokens, en gardant les derniers. Passé la centaine de termes, chaque ajout en évince silencieusement un autre. Le drapeau se réserve donc à ce que le moteur ne peut pas deviner, sigles, noms propres, toponymes composés. Une locution française ordinaire n'en a pas besoin, le moteur l'écrit déjà. Un test de la suite vérifie que le prompt reste sous la limite.
+
+**Une entrée dont l'`entendu` égale le `corrige` n'est pas inutile.** La recherche ignore la casse et les accents : `ratione materiae` capture « ratione matériae » et rétablit la forme latine. C'est ainsi que le lexique livré nettoie les accents parasites sans dépenser un token de biais.
+
+Le lexique livré couvre les juridictions, les codes et sigles du droit public et du droit pénal, les grands noms de la jurisprudence administrative, le latin de procédure, les communes de la Haute-Garonne à trait d'union et les fautes de forme classiques (« conflit d'intérêt », « procès verbal », « au vue de »).
+
+> **Attention aux mots courants.** Une entrée frappe partout, sans égard au contexte : `partant` → `Partant` transforme « en partant de là » en « en Partant de là ». Un `entendu` qui existe aussi comme mot français ordinaire est à éviter.
+
 **Commandes de ponctuation** — « virgule », « point », « à la ligne », « ouvrez les guillemets », « point d'interrogation ». Les espaces insécables de la typographie française sont posées automatiquement devant `; : ! ?` et à l'intérieur des guillemets.
 
 Les marques simples sont désactivables dans les réglages : en droit, « le point de départ du délai » ne doit pas devenir une ponctuation.

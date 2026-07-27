@@ -5,6 +5,11 @@
     "biaiser": true
   },
   {
+    "entendu": "caa de toulouse",
+    "corrige": "CAA de Toulouse",
+    "biaiser": true
+  },
+  {
     "entendu": "té a de toulouse",
     "corrige": "TA de Toulouse",
     "biaiser": true
@@ -15,33 +20,28 @@
     "biaiser": true
   },
   {
-    "entendu": "cour administrative d'appel",
-    "corrige": "cour administrative d'appel",
-    "biaiser": true
-  },
-  {
     "entendu": "cé jé a",
     "corrige": "CJA",
     "biaiser": true
   },
   {
-    "entendu": "code de justice administrative",
-    "corrige": "code de justice administrative",
+    "entendu": "cgct",
+    "corrige": "CGCT",
     "biaiser": true
   },
   {
-    "entendu": "recours pour excès de pouvoir",
-    "corrige": "recours pour excès de pouvoir",
+    "entendu": "crpa",
+    "corrige": "CRPA",
     "biaiser": true
   },
   {
-    "entendu": "référé suspension",
-    "corrige": "référé-suspension",
+    "entendu": "ceseda",
+    "corrige": "CESEDA",
     "biaiser": true
   },
   {
-    "entendu": "référé liberté",
-    "corrige": "référé-liberté",
+    "entendu": "qpc",
+    "corrige": "QPC",
     "biaiser": true
   },
   {
@@ -50,8 +50,28 @@
     "biaiser": true
   },
   {
+    "entendu": "oqtf",
+    "corrige": "OQTF",
+    "biaiser": true
+  },
+  {
+    "entendu": "crpc",
+    "corrige": "CRPC",
+    "biaiser": true
+  },
+  {
     "entendu": "hatvp",
     "corrige": "HATVP",
+    "biaiser": true
+  },
+  {
+    "entendu": "cada",
+    "corrige": "CADA",
+    "biaiser": true
+  },
+  {
+    "entendu": "cnil",
+    "corrige": "CNIL",
     "biaiser": true
   },
   {
@@ -65,8 +85,38 @@
     "biaiser": true
   },
   {
-    "entendu": "moyen tiré de",
-    "corrige": "moyen tiré de",
+    "entendu": "plui",
+    "corrige": "PLUi",
+    "biaiser": true
+  },
+  {
+    "entendu": "scot",
+    "corrige": "SCoT",
+    "biaiser": true
+  },
+  {
+    "entendu": "danthony",
+    "corrige": "Danthony",
+    "biaiser": true
+  },
+  {
+    "entendu": "czabaj",
+    "corrige": "Czabaj",
+    "biaiser": true
+  },
+  {
+    "entendu": "duvignères",
+    "corrige": "Duvignères",
+    "biaiser": true
+  },
+  {
+    "entendu": "ternon",
+    "corrige": "Ternon",
+    "biaiser": true
+  },
+  {
+    "entendu": "gisti",
+    "corrige": "GISTI",
     "biaiser": true
   },
   {
@@ -85,18 +135,394 @@
     "biaiser": true
   },
   {
+    "entendu": "haute garonne",
+    "corrige": "Haute-Garonne",
+    "biaiser": true
+  },
+  {
+    "entendu": "tarn et garonne",
+    "corrige": "Tarn-et-Garonne",
+    "biaiser": true
+  },
+  {
+    "entendu": "castanet tolosan",
+    "corrige": "Castanet-Tolosan",
+    "biaiser": true
+  },
+  {
+    "entendu": "ramonville saint agne",
+    "corrige": "Ramonville-Saint-Agne",
+    "biaiser": true
+  },
+  {
     "entendu": "barreau de toulouse",
     "corrige": "barreau de Toulouse",
     "biaiser": true
   },
+
   {
-    "entendu": "au demeurant",
-    "corrige": "au demeurant",
-    "biaiser": true
+    "entendu": "ça a de toulouse",
+    "corrige": "CAA de Toulouse",
+    "biaiser": false
   },
   {
-    "entendu": "partant",
-    "corrige": "Partant",
+    "entendu": "cpp",
+    "corrige": "CPP",
+    "biaiser": false
+  },
+  {
+    "entendu": "cgi",
+    "corrige": "CGI",
+    "biaiser": false
+  },
+  {
+    "entendu": "lpf",
+    "corrige": "LPF",
+    "biaiser": false
+  },
+  {
+    "entendu": "ccp",
+    "corrige": "CCP",
+    "biaiser": false
+  },
+  {
+    "entendu": "cch",
+    "corrige": "CCH",
+    "biaiser": false
+  },
+  {
+    "entendu": "jld",
+    "corrige": "JLD",
+    "biaiser": false
+  },
+  {
+    "entendu": "jap",
+    "corrige": "JAP",
+    "biaiser": false
+  },
+  {
+    "entendu": "tva",
+    "corrige": "TVA",
+    "biaiser": false
+  },
+  {
+    "entendu": "cfe",
+    "corrige": "CFE",
+    "biaiser": false
+  },
+  {
+    "entendu": "arcom",
+    "corrige": "ARCOM",
+    "biaiser": false
+  },
+  {
+    "entendu": "dreal",
+    "corrige": "DREAL",
+    "biaiser": false
+  },
+  {
+    "entendu": "ddt",
+    "corrige": "DDT",
+    "biaiser": false
+  },
+  {
+    "entendu": "sgar",
+    "corrige": "SGAR",
+    "biaiser": false
+  },
+  {
+    "entendu": "dgfip",
+    "corrige": "DGFiP",
+    "biaiser": false
+  },
+  {
+    "entendu": "insee",
+    "corrige": "INSEE",
+    "biaiser": false
+  },
+  {
+    "entendu": "chsct",
+    "corrige": "CHSCT",
+    "biaiser": false
+  },
+  {
+    "entendu": "rifseep",
+    "corrige": "RIFSEEP",
+    "biaiser": false
+  },
+  {
+    "entendu": "dup",
+    "corrige": "DUP",
+    "biaiser": false
+  },
+  {
+    "entendu": "zac",
+    "corrige": "ZAC",
+    "biaiser": false
+  },
+  {
+    "entendu": "cctp",
+    "corrige": "CCTP",
+    "biaiser": false
+  },
+  {
+    "entendu": "ccap",
+    "corrige": "CCAP",
+    "biaiser": false
+  },
+  {
+    "entendu": "aapc",
+    "corrige": "AAPC",
+    "biaiser": false
+  },
+  {
+    "entendu": "mapa",
+    "corrige": "MAPA",
+    "biaiser": false
+  },
+  {
+    "entendu": "dce",
+    "corrige": "DCE",
+    "biaiser": false
+  },
+
+  {
+    "entendu": "conseil constitutionnel",
+    "corrige": "Conseil constitutionnel",
+    "biaiser": false
+  },
+  {
+    "entendu": "cour de cassation",
+    "corrige": "Cour de cassation",
+    "biaiser": false
+  },
+  {
+    "entendu": "tribunal des conflits",
+    "corrige": "Tribunal des conflits",
+    "biaiser": false
+  },
+  {
+    "entendu": "cour des comptes",
+    "corrige": "Cour des comptes",
+    "biaiser": false
+  },
+  {
+    "entendu": "journal officiel",
+    "corrige": "Journal officiel",
+    "biaiser": false
+  },
+  {
+    "entendu": "légifrance",
+    "corrige": "Légifrance",
+    "biaiser": false
+  },
+  {
+    "entendu": "garde des sceaux",
+    "corrige": "garde des Sceaux",
+    "biaiser": false
+  },
+  {
+    "entendu": "avocat aux conseils",
+    "corrige": "avocat aux Conseils",
+    "biaiser": false
+  },
+  {
+    "entendu": "occitanie",
+    "corrige": "Occitanie",
+    "biaiser": false
+  },
+  {
+    "entendu": "toulouse métropole",
+    "corrige": "Toulouse Métropole",
+    "biaiser": false
+  },
+
+  {
+    "entendu": "d'anthony",
+    "corrige": "Danthony",
+    "biaiser": false
+  },
+  {
+    "entendu": "dantony",
+    "corrige": "Danthony",
+    "biaiser": false
+  },
+  {
+    "entendu": "duvignère",
+    "corrige": "Duvignères",
+    "biaiser": false
+  },
+
+  {
+    "entendu": "a fortiori",
+    "corrige": "a fortiori",
+    "biaiser": false
+  },
+  {
+    "entendu": "a contrario",
+    "corrige": "a contrario",
+    "biaiser": false
+  },
+  {
+    "entendu": "a priori",
+    "corrige": "a priori",
+    "biaiser": false
+  },
+  {
+    "entendu": "a posteriori",
+    "corrige": "a posteriori",
+    "biaiser": false
+  },
+  {
+    "entendu": "a pari",
+    "corrige": "a pari",
+    "biaiser": false
+  },
+  {
+    "entendu": "ultra petita",
+    "corrige": "ultra petita",
+    "biaiser": false
+  },
+  {
+    "entendu": "infra petita",
+    "corrige": "infra petita",
+    "biaiser": false
+  },
+  {
+    "entendu": "in limine litis",
+    "corrige": "in limine litis",
+    "biaiser": false
+  },
+  {
+    "entendu": "in solidum",
+    "corrige": "in solidum",
+    "biaiser": false
+  },
+  {
+    "entendu": "intuitu personae",
+    "corrige": "intuitu personae",
+    "biaiser": false
+  },
+  {
+    "entendu": "ratione materiae",
+    "corrige": "ratione materiae",
+    "biaiser": false
+  },
+  {
+    "entendu": "ratione temporis",
+    "corrige": "ratione temporis",
+    "biaiser": false
+  },
+  {
+    "entendu": "ratione loci",
+    "corrige": "ratione loci",
+    "biaiser": false
+  },
+  {
+    "entendu": "dies a quo",
+    "corrige": "dies a quo",
+    "biaiser": false
+  },
+  {
+    "entendu": "obiter dictum",
+    "corrige": "obiter dictum",
+    "biaiser": false
+  },
+  {
+    "entendu": "erga omnes",
+    "corrige": "erga omnes",
+    "biaiser": false
+  },
+  {
+    "entendu": "inter partes",
+    "corrige": "inter partes",
+    "biaiser": false
+  },
+  {
+    "entendu": "non bis in idem",
+    "corrige": "non bis in idem",
+    "biaiser": false
+  },
+  {
+    "entendu": "nemo auditur",
+    "corrige": "nemo auditur",
+    "biaiser": false
+  },
+
+  {
+    "entendu": "conflit d'intérêt",
+    "corrige": "conflit d'intérêts",
+    "biaiser": false
+  },
+  {
+    "entendu": "prise illégale d'intérêt",
+    "corrige": "prise illégale d'intérêts",
+    "biaiser": false
+  },
+  {
+    "entendu": "au vue de",
+    "corrige": "au vu de",
+    "biaiser": false
+  },
+  {
+    "entendu": "non lieu",
+    "corrige": "non-lieu",
+    "biaiser": false
+  },
+  {
+    "entendu": "procès verbal",
+    "corrige": "procès-verbal",
+    "biaiser": false
+  },
+  {
+    "entendu": "ayant droits",
+    "corrige": "ayants droit",
+    "biaiser": false
+  },
+  {
+    "entendu": "référé suspension",
+    "corrige": "référé-suspension",
+    "biaiser": false
+  },
+  {
+    "entendu": "référé liberté",
+    "corrige": "référé-liberté",
+    "biaiser": false
+  },
+  {
+    "entendu": "référé provision",
+    "corrige": "référé-provision",
+    "biaiser": false
+  },
+  {
+    "entendu": "référé expertise",
+    "corrige": "référé-expertise",
+    "biaiser": false
+  },
+
+  {
+    "entendu": "saint gaudens",
+    "corrige": "Saint-Gaudens",
+    "biaiser": false
+  },
+  {
+    "entendu": "saint orens de gameville",
+    "corrige": "Saint-Orens-de-Gameville",
+    "biaiser": false
+  },
+  {
+    "entendu": "portet sur garonne",
+    "corrige": "Portet-sur-Garonne",
+    "biaiser": false
+  },
+  {
+    "entendu": "plaisance du touch",
+    "corrige": "Plaisance-du-Touch",
+    "biaiser": false
+  },
+  {
+    "entendu": "villefranche de lauragais",
+    "corrige": "Villefranche-de-Lauragais",
     "biaiser": false
   }
 ]
