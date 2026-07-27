@@ -28,11 +28,12 @@ final class Preferences {
         static let correctionRetention = "correction.retention"
         static let ollamaModel = "correction.ollamaModel"
         static let lineFormat = "repliques.format"
+        static let hotkeyTrigger = "hotkey.binding"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
-            correctionEnabled, correctionRetention, ollamaModel, lineFormat,
+            correctionEnabled, correctionRetention, ollamaModel, lineFormat, hotkeyTrigger,
         ]
     }
 
@@ -119,20 +120,42 @@ final class Preferences {
 
     // MARK: - Déclenchement
 
-    var hotkey: HotkeyMonitor.Combination {
+    /// Le déclencheur, encodé en JSON.
+    ///
+    /// Les deux anciennes clés Carbon (code de touche et masque) sont conservées et
+    /// relues une fois : elles portent le raccourci que l'utilisateur avait choisi,
+    /// et une mise à jour ne doit pas le lui reprendre.
+    var hotkeyTrigger: HotkeyTrigger {
         get {
-            access(keyPath: \.hotkey)
-            return HotkeyMonitor.Combination(
-                keyCode: UInt32(defaults.integer(forKey: Key.hotkeyCode)),
-                modifiers: UInt32(defaults.integer(forKey: Key.hotkeyModifiers))
-            )
+            access(keyPath: \.hotkeyTrigger)
+            if let data = defaults.data(forKey: Key.hotkeyTrigger),
+               let trigger = try? JSONDecoder().decode(HotkeyTrigger.self, from: data) {
+                return trigger
+            }
+            return Self.triggerFromLegacyCarbonKeys(defaults) ?? .commandShiftJ
         }
         set {
-            withMutation(keyPath: \.hotkey) {
-                defaults.set(Int(newValue.keyCode), forKey: Key.hotkeyCode)
-                defaults.set(Int(newValue.modifiers), forKey: Key.hotkeyModifiers)
+            withMutation(keyPath: \.hotkeyTrigger) {
+                guard let data = try? JSONEncoder().encode(newValue) else { return }
+                defaults.set(data, forKey: Key.hotkeyTrigger)
             }
         }
+    }
+
+    /// Reconstruit le déclencheur depuis les masques Carbon d'avant la version 2.2.
+    /// Sans latéralité : Carbon ne la rapportait pas, on ne peut pas l'inventer.
+    private static func triggerFromLegacyCarbonKeys(_ defaults: UserDefaults) -> HotkeyTrigger? {
+        guard let code = defaults.object(forKey: Key.hotkeyCode) as? Int else { return nil }
+        let mask = defaults.integer(forKey: Key.hotkeyModifiers)
+
+        var modifiers: [LateralModifier] = []
+        if mask & controlKey != 0 { modifiers.append(LateralModifier(.control)) }
+        if mask & optionKey != 0 { modifiers.append(LateralModifier(.option)) }
+        if mask & shiftKey != 0 { modifiers.append(LateralModifier(.shift)) }
+        if mask & cmdKey != 0 { modifiers.append(LateralModifier(.command)) }
+        guard !modifiers.isEmpty else { return nil }
+
+        return .combination(modifiers: modifiers, keyCode: UInt16(code))
     }
 
     var holdThreshold: Double {

@@ -123,6 +123,11 @@ final class MenuBarController {
         PermissionGuard.openSettings(for: .microphone)
     }
 
+    func openInputMonitoringSettings() {
+        close()
+        PermissionGuard.openSettings(for: .inputMonitoring)
+    }
+
     func quit() {
         NSApplication.shared.terminate(nil)
     }

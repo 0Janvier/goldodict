@@ -154,6 +154,7 @@ final class DictationController {
 
     var microphoneGranted: Bool { PermissionGuard.microphoneStatus == .authorized }
     var accessibilityGranted: Bool { PermissionGuard.hasAccessibility() }
+    var inputMonitoringGranted: Bool { PermissionGuard.hasInputMonitoring }
 
     /// Niveau sonore instantané. Même source que la pastille flottante
     /// (`overlay.levelProvider`) : le panneau de la barre des menus peut rester
@@ -233,21 +234,30 @@ final class DictationController {
     private var audioFormat: AVAudioFormat?
 
     /// Raccourci actuellement armé, affiché dans le menu.
-    private(set) var combination: HotkeyMonitor.Combination = .commandShiftJ
+    private(set) var trigger: HotkeyTrigger = .commandShiftJ
+
+    /// Le raccourci tel qu'il s'écrit, dans la disposition du clavier branché.
+    var triggerDisplayString: String { trigger.displayString(keyLabel: KeyLabels.label) }
+
+    /// Le tap clavier a-t-il pu être armé ? Un échec vient d'une autorisation
+    /// refusée, et il est muet : sans ce drapeau, le raccourci ne répondrait plus
+    /// sans que rien ne l'explique.
+    private(set) var hotkeyArmed = true
 
     /// Enregistre le raccourci global. À appeler une fois l'application lancée.
-    func activate(combination: HotkeyMonitor.Combination? = nil) {
+    func activate(trigger: HotkeyTrigger? = nil) {
         hotkey.onEvent = { [weak self] isDown in
             MainActor.assumeIsolated {
                 self?.handleHotkey(isDown: isDown)
             }
         }
 
-        let combination = combination ?? preferences.hotkey
+        let trigger = trigger ?? preferences.hotkeyTrigger
         resolver = TriggerResolver(holdThreshold: preferences.holdThreshold)
-        self.combination = combination
-        if !hotkey.register(combination) {
-            state = .failed("raccourci \(combination.displayString) déjà pris")
+        self.trigger = trigger
+        hotkeyArmed = hotkey.register(trigger)
+        if !hotkeyArmed {
+            state = .failed("raccourci inactif — autorisez la surveillance de l'entrée")
         }
 
         lexiconStore.load()
@@ -276,7 +286,7 @@ final class DictationController {
         // d'accueil, qui les présente une par une et en montre l'état. Le manque est
         // ensuite signalé en permanence par le bandeau du menu.
         Log.lifecycle.notice(
-            "autorisations — micro : \(self.microphoneGranted, privacy: .public), accessibilité : \(self.accessibilityGranted, privacy: .public)"
+            "autorisations — micro : \(self.microphoneGranted, privacy: .public), accessibilité : \(self.accessibilityGranted, privacy: .public), surveillance de l'entrée : \(self.inputMonitoringGranted, privacy: .public)"
         )
 
         // Le modèle de langue peut demander un téléchargement au premier lancement.
@@ -304,6 +314,14 @@ final class DictationController {
 
     func deactivate() {
         hotkey.unregister()
+    }
+
+    /// Change le raccourci et le réarme aussitôt.
+    func updateTrigger(_ trigger: HotkeyTrigger) {
+        preferences.hotkeyTrigger = trigger
+        self.trigger = trigger
+        hotkeyArmed = hotkey.register(trigger)
+        if hotkeyArmed, case .failed = state { state = .idle }
     }
 
     // MARK: - Geste de déclenchement

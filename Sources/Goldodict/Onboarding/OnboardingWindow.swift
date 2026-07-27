@@ -4,11 +4,11 @@ import SwiftUI
 
 /// Fenêtre du premier lancement.
 ///
-/// Elle existe pour une raison précise : sans les deux autorisations système,
-/// Goldodict ne dicte rien ou ne colle rien, et rien dans l'interface ne le dit au
-/// moment où cela se produit. Les demander une par une, avec l'état visible en
-/// permanence, vaut mieux que deux fenêtres système surgies au lancement, que
-/// l'utilisateur écarte sans les lire.
+/// Elle existe pour une raison précise : sans les trois autorisations système,
+/// Goldodict n'entend rien, ne colle rien ou ne répond pas au raccourci, et rien
+/// dans l'interface ne le dit au moment où cela se produit. Les demander une par
+/// une, avec l'état visible en permanence, vaut mieux que trois fenêtres système
+/// surgies au lancement, que l'utilisateur écarte sans les lire.
 @MainActor
 final class OnboardingWindowController {
 
@@ -22,7 +22,7 @@ final class OnboardingWindowController {
     func show() {
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 540, height: 440),
+                contentRect: NSRect(x: 0, y: 0, width: 540, height: 520),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
@@ -74,7 +74,7 @@ struct OnboardingView: View {
 
             footer
         }
-        .frame(width: 540, height: 440)
+        .frame(width: 540, height: 520)
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             pulse &+= 1
         }
@@ -105,8 +105,8 @@ struct OnboardingView: View {
 
     private var permissionsStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Title("Deux autorisations, une seule fois")
-            Lead("La première laisse Goldodict entendre votre voix. La seconde lui laisse déposer le texte dans le document où vous écrivez.")
+            Title("Trois autorisations, une seule fois")
+            Lead("La première laisse Goldodict entendre votre voix, la deuxième lui laisse déposer le texte dans le document où vous écrivez, la troisième lui laisse reconnaître votre raccourci.")
 
             PermissionRow(
                 symbol: "mic.fill",
@@ -126,6 +126,18 @@ struct OnboardingView: View {
                     // seul le panneau des Réglages permet de revenir en arrière.
                     if !PermissionGuard.hasAccessibility(prompting: true) {
                         PermissionGuard.openSettings(for: .accessibility)
+                    }
+                }
+            )
+
+            PermissionRow(
+                symbol: "keyboard",
+                title: "Surveillance de l'entrée",
+                detail: "Elle autorise la lecture du raccourci, y compris la distinction entre les touches de gauche et de droite. Sans elle, la dictée ne se déclenche que depuis la barre des menus.",
+                granted: controller.inputMonitoringGranted,
+                action: {
+                    if !PermissionGuard.requestInputMonitoring() {
+                        PermissionGuard.openSettings(for: .inputMonitoring)
                     }
                 }
             )
@@ -174,7 +186,7 @@ struct OnboardingView: View {
             Lead("Cliquez dans le cadre, maintenez le raccourci et dictez une phrase. Relâchez : le texte s'écrit ici même.")
 
             HStack(spacing: 8) {
-                ForEach(controller.combination.displayString.map(String.init), id: \.self) { key in
+                ForEach(controller.trigger.keyCaps(keyLabel: KeyLabels.label), id: \.self) { key in
                     Text(key)
                         .font(.system(size: 15, weight: .medium))
                         .frame(minWidth: 30, minHeight: 30)

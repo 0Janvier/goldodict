@@ -145,6 +145,14 @@ struct MenuPanel: View {
                 perform: host.openAccessibilitySettings
             )
         }
+        if !controller.hotkeyArmed {
+            Banner(
+                symbol: "keyboard.badge.ellipsis",
+                message: "Surveillance de l'entrée refusée. Le raccourci ne répond pas.",
+                action: "Ouvrir",
+                perform: host.openInputMonitoringSettings
+            )
+        }
     }
 
     // MARK: - Dictée et moteur
@@ -156,7 +164,7 @@ struct MenuPanel: View {
                     Image(systemName: controller.state.isRecording ? "stop.fill" : "mic.fill")
                     Text(controller.state.isRecording ? "Arrêter la dictée" : "Dicter maintenant")
                     Spacer(minLength: 8)
-                    Text(controller.combination.displayString)
+                    Text(controller.triggerDisplayString)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)

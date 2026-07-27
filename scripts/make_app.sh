@@ -4,7 +4,7 @@
 #
 # La signature avec une identité STABLE est indispensable : une signature ad hoc
 # change d'empreinte à chaque compilation, ce qui fait perdre à l'application ses
-# autorisations micro et Accessibilité à chaque rebuild.
+# autorisations micro, Accessibilité et Surveillance de l'entrée à chaque rebuild.
 #
 # La compilation se fait hors de ~/Documents : iCloud évince le contenu de .build
 # et produit des lectures tronquées en plein build.
@@ -72,5 +72,6 @@ cp -R "$APP" "/Applications/Goldodict.app"
 xattr -dr com.apple.quarantine "/Applications/Goldodict.app" 2>/dev/null || true
 
 echo "✓ /Applications/Goldodict.app prêt."
-echo "  Premier lancement : autoriser le Microphone, puis l'Accessibilité"
+echo "  Premier lancement : autoriser le Microphone, l'Accessibilité,"
+echo "  puis la Surveillance de l'entrée (raccourci global)"
 echo "  (Réglages Système > Confidentialité et sécurité)."

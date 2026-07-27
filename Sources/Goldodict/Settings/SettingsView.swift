@@ -127,6 +127,16 @@ private struct StatusPanel: View {
             }
 
             StatusLine(
+                label: "Raccourci",
+                ok: controller.hotkeyArmed,
+                detail: controller.hotkeyArmed
+                    ? controller.triggerDisplayString
+                    : "surveillance de l'entrée refusée"
+            ) {
+                PermissionGuard.openSettings(for: .inputMonitoring)
+            }
+
+            StatusLine(
                 label: "Relecture",
                 ok: availability.apple || availability.ollama,
                 detail: correctorDetail,
@@ -185,7 +195,7 @@ private struct DictationSettings: View {
     var body: some View {
         Form {
             Section("Déclenchement") {
-                LabeledContent("Raccourci", value: controller.combination.displayString)
+                HotkeyRecorder(controller: controller)
                 Text("Appui bref : la dictée bascule en marche puis en arrêt. Appui maintenu : elle s'arrête au relâchement.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

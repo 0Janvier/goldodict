@@ -5,17 +5,17 @@ Ce document consigne les décisions de conception et, surtout, les pièges renco
 ## Vue d'ensemble
 
 ```
-⌘⇧J ──▶ HotkeyMonitor ──▶ TriggerResolver ──▶ DictationController
-                                                     │
-                                    AudioCapture ────┤
-                                         │           │
-                                    BufferRelay ─────┤
-                                         │           │
-                              TranscriptionEngine ───┤
-                                                     │
-                              TranscriptPipeline ────┤
-                                                     │
-                                    TextInjector ────┘
+Geste ──▶ HotkeyMonitor ──▶ TriggerResolver ──▶ DictationController
+                                                       │
+                                      AudioCapture ────┤
+                                           │           │
+                                      BufferRelay ─────┤
+                                           │           │
+                                TranscriptionEngine ───┤
+                                                       │
+                                TranscriptPipeline ────┤
+                                                       │
+                                      TextInjector ────┘
 ```
 
 Le contrôleur ne connaît que le protocole `TranscriptionEngine`. Ajouter un moteur ne touche aucune autre couche.
@@ -24,11 +24,21 @@ La séparation en deux cibles n'est pas cosmétique : `GoldodictCore` ne dépend
 
 ## Décisions
 
-### Carbon plutôt que CGEventTap pour le raccourci
+### CGEventTap plutôt que Carbon pour le raccourci (v2.2.0)
 
-`RegisterEventHotKey` délivre `kEventHotKeyReleased` autant que `kEventHotKeyPressed`, ce qui suffit à distinguer l'appui bref du maintien — **sans** réclamer l'autorisation « Surveillance de l'entrée » qu'exigerait un `CGEventTap`. Une permission système en moins à faire accepter.
+Jusqu'à la v2.1.5, le raccourci passait par `RegisterEventHotKey`, qui délivre `kEventHotKeyReleased` autant que `kEventHotKeyPressed` — de quoi distinguer l'appui bref du maintien sans réclamer l'autorisation « Surveillance de l'entrée ». Une permission système en moins à faire accepter.
 
-**Piège** : le gestionnaire doit être installé sur `GetApplicationEventTarget()`. Avec `GetEventDispatcherTarget()`, l'enregistrement réussit, `RegisterEventHotKey` renvoie `noErr`, et **aucun événement n'arrive jamais**. Panne silencieuse, la pire à diagnostiquer.
+Carbon ne sait pourtant faire ni l'un ni l'autre de ce que la v2.2.0 demande. Ses modificateurs sont des masques de famille (`cmdKey`, `optionKey`) qui ignorent le côté du clavier, la touche `fn` ne fait partie d'aucun d'eux, et un modificateur seul ne constitue pas un raccourci enregistrable. Latéralité, `fn` et déclenchement au modificateur seul tombent donc ensemble, et l'autorisation devient le prix à payer.
+
+`HotkeyMonitor` installe un `CGEvent.tapCreate` sur `.cgSessionEventTap`, écoutant `keyDown`, `keyUp` et `flagsChanged`. Trois points méritent d'être retenus.
+
+**La latéralité vit dans les bits de poids faible.** Le masque d'un événement porte les bits de famille (`0x100000` pour ⌘) **et** les bits hérités d'IOKit (`NX_DEVICELCMDKEYMASK` = `0x08`, `NX_DEVICERCMDKEYMASK` = `0x10`). C'est `deviceIndependentFlagsMask` — le masque que tout le monde applique par réflexe — qui les efface, d'où la croyance que macOS ne distingue pas les deux touches ⌘. Voir `ModifierFlags` dans `GoldodictCore`. Certains claviers tiers ne posent que le bit de famille : `isPressed` retombe alors dessus, et la latéralité est perdue faute d'être rapportée, jamais faute d'être demandée.
+
+**La consommation est asymétrique.** Une combinaison doit être retirée du flux (`return nil`), sans quoi la lettre s'écrit dans le document en même temps que la dictée démarre. Un modificateur seul ne doit **jamais** l'être : avaler l'appui sur ⌘ le supprimerait pour tout le système, jusqu'au ⌘Q. D'où `HotkeyTrigger.consumesEvent`.
+
+**Le tap se désarme tout seul.** `tapDisabledByTimeout` arrive quand le rappel a mis trop de temps, `tapDisabledByUserInput` sur intervention système. Les deux se rattrapent par un `CGEvent.tapEnable` depuis l'intérieur du rappel. Sans cela, le raccourci meurt en cours de session sans le moindre message.
+
+Le déclenchement au modificateur seul pose un dernier problème, qui n'est pas technique : ⌘ seul est aussi le début de ⌘S. `HotkeyMonitor` annule donc le geste dès qu'un modificateur étranger ou une touche ordinaire survient, et l'annulation tient jusqu'au relâchement complet.
 
 ### Le statut du modèle de langue ne vaut que pour le processus courant
 

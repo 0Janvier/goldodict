@@ -6,18 +6,32 @@ Rien ne quitte l'ordinateur : ni l'audio, ni la transcription. Aucun fichier n'e
 
 ## Usage
 
-Le raccourci global est **⌘⇧J**.
+Le raccourci global est **⌘⇧J** par défaut.
 
 - **Appui maintenu** : push-to-talk. Vous parlez, vous relâchez, le texte est inséré.
 - **Appui bref** : bascule marche/arrêt, pour les longues dictées. Un second appui termine.
 
 La capture démarre dès l'enfoncement de la touche, aucun début de phrase n'est perdu.
 
-**La pastille.** Pendant la dictée, une pilule s'affiche en bas de l'écran : point rouge, vumètre animé sur le niveau du micro, minuterie. Le vumètre est là pour une raison précise — il distingue « l'application écoute » de « le micro capte quelque chose », deux états qu'un simple voyant confond. La transcription puis l'insertion s'y affichent ensuite, et la pastille se referme sur le nombre de signes insérés et le nom de l'application destinataire.
+**Personnaliser le raccourci.** Réglages, onglet Dictée. Trois formes sont possibles.
+
+| Forme | Exemple |
+|---|---|
+| Combinaison | ⌘⇧J, ⌃⌥Espace |
+| Modificateur seul, maintenu | ⌘ de droite, `fn` |
+| Double appui sur un modificateur | ⌃ ×2, dans les 300 ms |
+
+Le réglage se fait au geste : cliquez sur *Modifier*, faites le raccourci, il est retenu. Les deux touches d'une même famille sont distinguées, notées `ᴸ` et `ᴿ` — ⌘ᴿ ne déclenche rien si vous appuyez sur celle de gauche. La case *Distinguer les touches de gauche et de droite* rend le raccourci indifférent au côté. La touche `fn` est acceptée, sans côté puisqu'il n'y en a qu'une.
+
+Un modificateur seul reste utilisable comme modificateur : frapper une autre touche pendant qu'il est enfoncé annule la dictée, et ⌘S enregistre comme d'habitude.
+
+**La pastille.** Pendant la dictée, une pilule s'affiche en bas de l'écran : point rouge, vumètre animé sur le niveau du micro, minuterie, et une réplique de cinéma tirée au sort. Le vumètre est là pour une raison précise — il distingue « l'application écoute » de « le micro capte quelque chose », deux états qu'un simple voyant confond. La transcription puis l'insertion s'y affichent ensuite, et la pastille se referme sur le nombre de signes insérés et le nom de l'application destinataire.
+
+**Les répliques.** Trente répliques en version originale, sur le thème de la parole et des machines qui écoutent, de *You talkin' to me?* à *I'm sorry, Dave. I'm afraid I can't do that.* Une nouvelle à chaque dictée, jamais deux fois la même d'affilée. Le format s'y choisit aux flèches du clavier, dans l'onglet Répliques des réglages : réplique seule, réplique et film, ou réplique avec film et année sur deux lignes. Le catalogue est un fichier JSON éditable, `~/Library/Application Support/Goldodict/repliques.json`, complétable depuis les réglages ou à la main.
 
 **Le menu.** Un clic sur l'icône de la barre des menus ouvre un panneau : état, autorisations manquantes, bouton de dictée, choix du moteur, cinq dernières dictées recopiables d'un clic. La dictée lancée depuis ce panneau revient à l'application où vous étiez, et non à Goldodict.
 
-> L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. Au premier lancement, une fenêtre d'accueil demande les deux autorisations une à une, propose le choix du moteur et offre un champ d'essai.
+> L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. Au premier lancement, une fenêtre d'accueil demande les trois autorisations une à une, propose le choix du moteur et offre un champ d'essai.
 
 ## Moteurs de transcription
 
@@ -81,9 +95,9 @@ Les marques simples sont désactivables dans les réglages : en droit, « le poi
 ./scripts/make_app.sh
 ```
 
-Le script compile, signe avec l'identité Developer ID et installe dans `/Applications`. Au premier lancement, autoriser le **Microphone** puis l'**Accessibilité** dans Réglages Système > Confidentialité et sécurité.
+Le script compile, signe avec l'identité Developer ID et installe dans `/Applications`. Au premier lancement, autoriser le **Microphone**, l'**Accessibilité** puis la **Surveillance de l'entrée** dans Réglages Système > Confidentialité et sécurité.
 
-Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas collé. C'est le seul défaut silencieux de l'application : il est signalé dans le menu, dans les réglages et dans la fenêtre d'accueil.
+Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas collé. Sans la Surveillance de l'entrée, le raccourci global ne répond pas et la dictée ne se lance que depuis la barre des menus. Ces deux défauts sont silencieux par nature : ils sont donc signalés dans le menu, dans les réglages et dans la fenêtre d'accueil.
 
 **Reprise d'Abracadabra.** L'application portait ce nom jusqu'à la version 0.1.0. Le lexique et les profils laissés dans `~/Library/Application Support/Abracadabra/` sont recopiés au premier lancement, et les réglages repris depuis l'ancien domaine de préférences. L'ancien dossier n'est pas supprimé. Les autorisations Microphone et Accessibilité, elles, sont à redonner : macOS les indexe sur l'identifiant de bundle, qui a changé.
 
@@ -113,7 +127,7 @@ log stream --predicate 'subsystem == "fr.sztulman.goldodict"' --level debug
 
 | Chemin | Rôle |
 |---|---|
-| `Sources/GoldodictCore/` | Logique pure et testable : état, geste de déclenchement, lexique, ponctuation, typographie |
+| `Sources/GoldodictCore/` | Logique pure et testable : état, geste de déclenchement, raccourci, lexique, répliques, ponctuation, typographie |
 | `Sources/Goldodict/` | Application : raccourci, audio, moteurs, insertion, réglages |
 | `sidecar/` | Démon Python pour Whisper MLX |
 | `design/` | Icône vectorielle, et sa déclinaison pour les petites tailles |

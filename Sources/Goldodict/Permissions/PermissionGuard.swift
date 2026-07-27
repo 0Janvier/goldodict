@@ -8,6 +8,7 @@ enum PermissionGuard {
     enum Kind {
         case microphone
         case accessibility
+        case inputMonitoring
 
         var settingsURL: URL {
             switch self {
@@ -15,6 +16,8 @@ enum PermissionGuard {
                 return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
             case .accessibility:
                 return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            case .inputMonitoring:
+                return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!
             }
         }
 
@@ -22,6 +25,7 @@ enum PermissionGuard {
             switch self {
             case .microphone: return "Microphone"
             case .accessibility: return "Accessibilité"
+            case .inputMonitoring: return "Surveillance de l'entrée"
             }
         }
     }
@@ -47,6 +51,18 @@ enum PermissionGuard {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompting]
         return AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
+
+    /// La Surveillance de l'entrée est requise pour lire le raccourci global.
+    ///
+    /// Elle n'a rien à voir avec l'Accessibilité : l'une laisse écrire dans les
+    /// autres applications, l'autre laisse y lire le clavier. Le tap d'événements
+    /// dont dépend le raccourci relève de la seconde.
+    static var hasInputMonitoring: Bool { CGPreflightListenEventAccess() }
+
+    /// La fenêtre système n'apparaît qu'une fois par signature. Ensuite, seul le
+    /// panneau des Réglages permet de revenir en arrière.
+    @discardableResult
+    static func requestInputMonitoring() -> Bool { CGRequestListenEventAccess() }
 
     static func openSettings(for kind: Kind) {
         NSWorkspace.shared.open(kind.settingsURL)

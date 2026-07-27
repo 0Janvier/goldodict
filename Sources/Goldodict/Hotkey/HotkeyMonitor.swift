@@ -1,141 +1,237 @@
-import Carbon.HIToolbox
+import CoreGraphics
 import Foundation
+import GoldodictCore
 
 /// Raccourci clavier global.
 ///
-/// L'API Carbon `RegisterEventHotKey` est retenue plutôt qu'un `CGEventTap` parce
-/// qu'elle délivre `kEventHotKeyReleased` aussi bien que `kEventHotKeyPressed` —
-/// nécessaire pour distinguer l'appui bref du maintien — **sans** exiger
-/// l'autorisation « Surveillance de l'entrée ». Une permission système en moins.
+/// Carbon (`RegisterEventHotKey`) tenait ce rôle et se passait de l'autorisation
+/// « Surveillance de l'entrée ». Il a été abandonné pour une raison qu'aucun
+/// réglage ne contourne : il ne rapporte que des masques de famille, jamais le côté
+/// du clavier, et ignore purement la touche fn. Distinguer ⌘ gauche de ⌘ droite
+/// impose de lire le flux clavier, donc un `CGEventTap`.
+///
+/// Le tap ne retire du flux que ce qu'il doit : une combinaison, sans quoi la
+/// touche s'écrirait dans le document. Jamais un modificateur seul — avaler l'appui
+/// sur ⌘ le supprimerait pour tout le système.
 final class HotkeyMonitor {
-
-    struct Combination: Equatable {
-        /// Code de touche virtuel (`kVK_*`), indépendant de la disposition AZERTY.
-        var keyCode: UInt32
-        /// Masque Carbon : `controlKey`, `optionKey`, `cmdKey`, `shiftKey`.
-        var modifiers: UInt32
-
-        /// ⌘⇧J. La touche J occupe la même position physique en AZERTY qu'en QWERTY,
-        /// le code de touche virtuel est donc fiable sans traitement particulier.
-        ///
-        /// À ne pas confondre avec ⌃⌥Espace, que macOS réserve pour « Sélectionner
-        /// la source de saisie suivante » et qu'un raccourci applicatif ne peut pas
-        /// capter.
-        static let commandShiftJ = Combination(
-            keyCode: UInt32(kVK_ANSI_J),
-            modifiers: UInt32(cmdKey | shiftKey)
-        )
-
-        /// Représentation lisible, dans l'ordre d'affichage retenu par macOS.
-        var displayString: String {
-            var symbols = ""
-            if modifiers & UInt32(controlKey) != 0 { symbols += "⌃" }
-            if modifiers & UInt32(optionKey) != 0 { symbols += "⌥" }
-            if modifiers & UInt32(shiftKey) != 0 { symbols += "⇧" }
-            if modifiers & UInt32(cmdKey) != 0 { symbols += "⌘" }
-            return symbols + Self.keyLabel(for: keyCode)
-        }
-
-        private static func keyLabel(for keyCode: UInt32) -> String {
-            switch Int(keyCode) {
-            case kVK_Space: return "Espace"
-            case kVK_ANSI_J: return "J"
-            case kVK_ANSI_K: return "K"
-            case kVK_ANSI_D: return "D"
-            case kVK_F5: return "F5"
-            default: return "touche \(keyCode)"
-            }
-        }
-    }
 
     /// Appelé sur la boucle principale à chaque enfoncement (`true`) et relâchement (`false`).
     var onEvent: ((Bool) -> Void)?
 
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
-    private var combination: Combination?
+    private(set) var trigger: HotkeyTrigger?
+    private(set) var isArmed = false
 
-    /// Enregistre le raccourci, en remplaçant celui éventuellement actif.
-    /// - Returns: `true` si l'enregistrement a réussi. Un échec signale presque
-    ///   toujours un raccourci déjà pris par une autre application.
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+
+    private var detector = DoubleTapDetector()
+
+    /// Le geste est-il en cours ? Sert à n'émettre le relâchement que si l'appui a
+    /// été émis, et à ne pas dupliquer un appui sur répétition automatique.
+    private var isEngaged = false
+
+    /// Une touche ordinaire a été frappée pendant qu'un modificateur était tenu :
+    /// c'est un raccourci de l'utilisateur, pas une dictée. Le geste reste annulé
+    /// jusqu'au relâchement complet.
+    private var isCancelled = false
+
+    /// Arme le raccourci, en remplaçant celui éventuellement actif.
+    /// - Returns: `true` si le tap a pu être créé. L'échec signale une autorisation
+    ///   manquante, jamais un conflit avec une autre application.
     @discardableResult
-    func register(_ combination: Combination) -> Bool {
+    func register(_ trigger: HotkeyTrigger) -> Bool {
         unregister()
+        self.trigger = trigger
+        detector = DoubleTapDetector()
 
-        var eventTypes = [
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
-            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
-        ]
+        let mask = (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
 
         let context = Unmanaged.passUnretained(self).toOpaque()
-        let installStatus = InstallEventHandler(
-            GetApplicationEventTarget(),
-            hotkeyEventHandler,
-            eventTypes.count,
-            &eventTypes,
-            context,
-            &handlerRef
-        )
-        guard installStatus == noErr else {
-            Log.hotkey.error("InstallEventHandler a échoué : \(installStatus)")
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(mask),
+            callback: hotkeyTapCallback,
+            userInfo: context
+        ) else {
+            Log.hotkey.error("création du tap refusée — autorisation manquante")
+            self.trigger = nil
             return false
         }
 
-        let hotKeyID = EventHotKeyID(signature: OSType(0x41425241 /* "ABRA" */), id: 1)
-        let registerStatus = RegisterEventHotKey(
-            combination.keyCode,
-            combination.modifiers,
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-        guard registerStatus == noErr else {
-            Log.hotkey.error("RegisterEventHotKey a échoué : \(registerStatus)")
-            unregister()
-            return false
-        }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
 
-        self.combination = combination
-        Log.hotkey.notice("raccourci armé : \(combination.displayString, privacy: .public)")
+        self.tap = tap
+        self.source = source
+        isArmed = true
+        Log.hotkey.notice("raccourci armé : \(trigger.displayString(keyLabel: KeyLabels.label), privacy: .public)")
         return true
     }
 
     func unregister() {
-        if let hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
-            self.hotKeyRef = nil
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+            self.tap = nil
         }
-        if let handlerRef {
-            RemoveEventHandler(handlerRef)
-            self.handlerRef = nil
+        if let source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            self.source = nil
         }
-        combination = nil
+        trigger = nil
+        isArmed = false
+        isEngaged = false
+        isCancelled = false
     }
 
-    fileprivate func dispatch(isDown: Bool) {
+    // MARK: - Traitement
+
+    /// - Returns: `true` pour retirer l'événement du flux clavier.
+    fileprivate func handle(type: CGEventType, event: CGEvent) -> Bool {
+        // Le système désarme le tap si le rappel traîne. Le réarmer ici est la seule
+        // occasion de le faire : sans cela, le raccourci cesse silencieusement de
+        // répondre et rien ne le signale.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            Log.hotkey.error("tap désarmé par le système, réarmé")
+            return false
+        }
+
+        guard let trigger else { return false }
+        let flags = event.flags.rawValue
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+
+        switch type {
+        case .flagsChanged:
+            return handleFlagsChanged(trigger: trigger, keyCode: keyCode, flags: flags)
+        case .keyDown:
+            return handleKeyDown(trigger: trigger, keyCode: keyCode, flags: flags, event: event)
+        case .keyUp:
+            return handleKeyUp(trigger: trigger, keyCode: keyCode)
+        default:
+            return false
+        }
+    }
+
+    private func handleFlagsChanged(trigger: HotkeyTrigger, keyCode: UInt16, flags: UInt64) -> Bool {
+        guard let change = ModifierKeyCode.event(keyCode: keyCode, flags: flags) else { return false }
+
+        switch trigger {
+        case .combination:
+            // Relâcher un modificateur pendant la dictée y met fin : maintenir ⌘⇧J
+            // puis lâcher ⌘ avant J doit s'arrêter là, sans quoi la dictée
+            // continuerait sans que rien ne la retienne.
+            if isEngaged, !change.isDown, trigger.modifiers.contains(where: { $0.key == change.modifier.key }) {
+                emit(isDown: false)
+            }
+            return false
+
+        case .modifierOnly(let wanted), .doubleTap(let wanted):
+            guard matches(change.modifier, wanted) else {
+                // Un autre modificateur s'ajoute : le geste devient un raccourci
+                // ordinaire, il ne déclenchera pas de dictée.
+                if change.isDown, !isEngaged { isCancelled = true }
+                if !change.isDown, !hasAnyModifier(in: flags) { isCancelled = false }
+                return false
+            }
+
+            if change.isDown {
+                return handleTriggerKeyDown(trigger: trigger, flags: flags)
+            } else {
+                if isEngaged { emit(isDown: false) }
+                isCancelled = false
+                return false
+            }
+        }
+    }
+
+    private func handleTriggerKeyDown(trigger: HotkeyTrigger, flags: UInt64) -> Bool {
+        guard !isEngaged else { return false }
+
+        // Un modificateur accompagné d'un autre est un raccourci, pas une dictée.
+        guard trigger.isSatisfied(byFlags: flags) else {
+            isCancelled = true
+            return false
+        }
+        isCancelled = false
+
+        switch trigger {
+        case .doubleTap:
+            let now = ProcessInfo.processInfo.systemUptime
+            guard detector.press(at: now) else { return false }
+            emit(isDown: true)
+        default:
+            emit(isDown: true)
+        }
+        return false
+    }
+
+    private func handleKeyDown(trigger: HotkeyTrigger, keyCode: UInt16, flags: UInt64, event: CGEvent) -> Bool {
+        switch trigger {
+        case .combination(_, let wantedKey):
+            guard keyCode == wantedKey, trigger.isSatisfied(byFlags: flags) else { return false }
+            // La répétition automatique ne relance rien : le geste a déjà commencé.
+            guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return true }
+            emit(isDown: true)
+            return true
+
+        case .modifierOnly, .doubleTap:
+            // Une frappe pendant que le modificateur est tenu : l'utilisateur
+            // compose un raccourci. La dictée en cours s'arrête, le geste est annulé.
+            if isEngaged { emit(isDown: false) }
+            isCancelled = true
+            detector.reset()
+            return false
+        }
+    }
+
+    private func handleKeyUp(trigger: HotkeyTrigger, keyCode: UInt16) -> Bool {
+        guard case .combination(_, let wantedKey) = trigger, keyCode == wantedKey else { return false }
+        if isEngaged { emit(isDown: false) }
+        return true
+    }
+
+    /// Un modificateur attendu sans côté accepte les deux touches.
+    private func matches(_ pressed: LateralModifier, _ wanted: LateralModifier) -> Bool {
+        guard pressed.key == wanted.key else { return false }
+        return wanted.side == .any || pressed.side == wanted.side
+    }
+
+    private func hasAnyModifier(in flags: UInt64) -> Bool {
+        ModifierKey.allCases.contains { flags & ModifierFlags.family($0) != 0 }
+    }
+
+    private func emit(isDown: Bool) {
+        guard isDown != isEngaged else { return }
+        isEngaged = isDown
         Log.hotkey.debug("événement \(isDown ? "enfoncé" : "relâché", privacy: .public)")
+        // Le rappel du tap s'exécute sur la boucle principale, où il a été ajouté.
         onEvent?(isDown)
     }
 
     deinit {
-        unregister()
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
     }
 }
 
-/// Le rappel Carbon est une fonction C : il ne capture rien et retrouve l'instance
-/// par le pointeur de contexte passé à `InstallEventHandler`.
-private let hotkeyEventHandler: EventHandlerUPP = { _, event, context in
-    guard let event, let context else { return OSStatus(eventNotHandledErr) }
+/// Le rappel du tap est une fonction C : il ne capture rien et retrouve l'instance
+/// par le pointeur d'utilisateur passé à `tapCreate`.
+private let hotkeyTapCallback: CGEventTapCallBack = { _, type, event, context in
+    guard let context else { return Unmanaged.passUnretained(event) }
     let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(context).takeUnretainedValue()
-    let kind = GetEventKind(event)
-    switch Int(kind) {
-    case kEventHotKeyPressed:
-        monitor.dispatch(isDown: true)
-    case kEventHotKeyReleased:
-        monitor.dispatch(isDown: false)
-    default:
-        return OSStatus(eventNotHandledErr)
+    if monitor.handle(type: type, event: event) {
+        return nil
     }
-    return noErr
+    return Unmanaged.passUnretained(event)
 }
