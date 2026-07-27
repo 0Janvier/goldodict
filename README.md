@@ -31,6 +31,8 @@ Un modificateur seul reste utilisable comme modificateur : frapper une autre tou
 
 **Le menu.** Un clic sur l'icône de la barre des menus ouvre un panneau : état, autorisations manquantes, bouton de dictée, choix du moteur, cinq dernières dictées recopiables d'un clic. La dictée lancée depuis ce panneau revient à l'application où vous étiez, et non à Goldodict.
 
+**Importer un fichier audio.** Le bouton *Importer…* du panneau ouvre un sélecteur de fichier, ou glissez-déposez directement un fichier audio sur l'icône de la barre des menus. Le moteur actuellement choisi transcrit le fichier — Apple ou Whisper, jamais un moteur imposé — et une fenêtre affiche le texte obtenu avec deux boutons, *Copier* et *Coller*. Rien ne s'insère automatiquement, contrairement à une dictée live. Refusé pendant une dictée en cours, le moteur ne tenant qu'une session à la fois.
+
 > L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. Au premier lancement, une fenêtre d'accueil demande les trois autorisations une à une, propose le choix du moteur et offre un champ d'essai.
 
 ## Moteurs de transcription

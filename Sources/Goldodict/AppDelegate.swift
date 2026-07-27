@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = DictationController()
     private(set) lazy var settingsWindow = SettingsWindowController(controller: controller)
     private lazy var onboardingWindow = OnboardingWindowController(controller: controller)
+    private lazy var importWindow = AudioImportWindowController(controller: controller)
     private var menuBar: MenuBarController?
 
     private static let firstRunKey = "didPresentOnboarding"
@@ -18,9 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.lifecycle.notice("applicationDidFinishLaunching")
 
-        menuBar = MenuBarController(controller: controller) { [weak self] in
-            self?.settingsWindow.show()
-        }
+        menuBar = MenuBarController(
+            controller: controller,
+            openSettings: { [weak self] in self?.settingsWindow.show() },
+            importAudio: { [weak self] url, application in
+                self?.importWindow.transcribe(fileAt: url, returningTo: application)
+            }
+        )
 
         controller.activate()
 

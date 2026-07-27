@@ -1,6 +1,7 @@
 import AppKit
 import GoldodictCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Icône de la barre des menus et panneau qu'elle déroule.
 ///
@@ -9,23 +10,38 @@ import SwiftUI
 /// utile de ce menu est précisément une alerte — l'Accessibilité refusée, seul cas
 /// où l'application échoue en silence. Le panneau est donc un `NSPopover` porté par
 /// un `NSStatusItem`, où SwiftUI dessine ce qu'il veut.
+///
+/// L'icône elle-même passe par `StatusItemDropView` plutôt que par
+/// `NSStatusItem.button` : le glisser-déposer d'un fichier audio exige des méthodes
+/// de `NSDraggingDestination` réellement surchargées sur la vue, ce qu'AppKit ne
+/// permet pas sur le bouton fourni par le système.
 @MainActor
 final class MenuBarController {
 
     private let controller: DictationController
     private let openSettingsAction: () -> Void
+    private let importAudioAction: (URL, NSRunningApplication?) -> Void
 
     private let statusItem: NSStatusItem
+    private let dropView: StatusItemDropView
     private let popover = NSPopover()
 
-    /// Application au premier plan avant que le clic ne donne le focus à Goldodict.
-    /// C'est elle que vise la dictée lancée depuis le menu.
+    /// Application au premier plan avant que le clic ou le dépôt ne donne le focus à
+    /// Goldodict. C'est elle que vise la dictée ou l'import lancés depuis le menu.
     private var previousApplication: NSRunningApplication?
 
-    init(controller: DictationController, openSettings: @escaping () -> Void) {
+    init(
+        controller: DictationController,
+        openSettings: @escaping () -> Void,
+        importAudio: @escaping (URL, NSRunningApplication?) -> Void
+    ) {
         self.controller = controller
         self.openSettingsAction = openSettings
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.importAudioAction = importAudio
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.dropView = StatusItemDropView(
+            frame: NSRect(x: 0, y: 0, width: NSStatusItem.squareLength, height: NSStatusBar.system.thickness)
+        )
 
         configureStatusItem()
         configurePopover()
@@ -36,12 +52,11 @@ final class MenuBarController {
     }
 
     private func configureStatusItem() {
-        guard let button = statusItem.button else { return }
-        button.image = StatusIcon.idle
-        button.imagePosition = .imageOnly
-        button.toolTip = "Goldodict — dictée"
-        button.target = self
-        button.action = #selector(togglePopover)
+        dropView.image = StatusIcon.idle
+        dropView.toolTip = "Goldodict — dictée"
+        dropView.onClick = { [weak self] in self?.togglePopover() }
+        dropView.onDropAudioFile = { [weak self] url in self?.handleDroppedFile(at: url) }
+        statusItem.view = dropView
     }
 
     private func configurePopover() {
@@ -59,29 +74,27 @@ final class MenuBarController {
     /// Reflète l'état dans l'icône : la bouche s'ouvre pendant la dictée, le rouge
     /// signale l'enregistrement, l'orange l'échec.
     private func reflect(_ state: DictationState) {
-        guard let button = statusItem.button else { return }
-        button.image = state.isRecording ? StatusIcon.recording : StatusIcon.idle
+        dropView.image = state.isRecording ? StatusIcon.recording : StatusIcon.idle
         switch state {
-        case .recording: button.contentTintColor = .systemRed
-        case .failed: button.contentTintColor = .systemOrange
-        default: button.contentTintColor = nil
+        case .recording: dropView.contentTintColor = .systemRed
+        case .failed: dropView.contentTintColor = .systemOrange
+        default: dropView.contentTintColor = nil
         }
     }
 
     // MARK: - Ouverture
 
-    @objc private func togglePopover() {
+    private func togglePopover() {
         if popover.isShown {
             popover.performClose(nil)
             return
         }
-        guard let button = statusItem.button else { return }
 
         // Relevé avant l'activation, sans quoi l'application « précédente » serait
         // Goldodict lui-même.
         previousApplication = NSWorkspace.shared.frontmostApplication
 
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+        popover.show(relativeTo: dropView.bounds, of: dropView, preferredEdge: .maxY)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -108,6 +121,34 @@ final class MenuBarController {
         controller.toggleFromMenu(returningTo: target)
     }
 
+    /// Ouvre un sélecteur de fichier et lance l'import sur celui choisi.
+    ///
+    /// Refusé pendant une dictée en cours : le moteur de transcription ne tient
+    /// qu'une session à la fois, live ou importée.
+    func importAudioFile() {
+        guard !controller.state.isBusy else { return }
+        let target = previousApplication
+        close()
+
+        let panel = NSOpenPanel()
+        panel.message = "Choisissez un fichier audio à transcrire."
+        panel.allowedContentTypes = [.audio]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        importAudioAction(url, target)
+    }
+
+    /// Un fichier déposé sur l'icône ne passe pas par l'ouverture du panneau : c'est
+    /// donc ici, et non dans `togglePopover()`, que l'application précédente doit
+    /// être relevée.
+    private func handleDroppedFile(at url: URL) {
+        guard !controller.state.isBusy else { return }
+        importAudioAction(url, NSWorkspace.shared.frontmostApplication)
+    }
+
     func openSettings() {
         close()
         openSettingsAction()
@@ -130,5 +171,67 @@ final class MenuBarController {
 
     func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+/// Vue de l'icône de la barre des menus, en remplacement de `NSStatusItem.button`.
+///
+/// `NSStatusItem.view` est dépréciée depuis macOS 10.14 mais reste la seule façon
+/// d'obtenir une vue dont on surcharge réellement `draggingEntered`/
+/// `performDragOperation` : le bouton fourni par le système ne peut pas être
+/// sous-classé, AppKit en crée lui-même l'instance.
+private final class StatusItemDropView: NSView {
+
+    var onClick: (() -> Void)?
+    var onDropAudioFile: ((URL) -> Void)?
+
+    private let imageView = NSImageView()
+
+    var image: NSImage? {
+        get { imageView.image }
+        set { imageView.image = newValue }
+    }
+
+    var contentTintColor: NSColor? {
+        get { imageView.contentTintColor }
+        set { imageView.contentTintColor = newValue }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.frame = bounds
+        imageView.autoresizingMask = [.width, .height]
+        addSubview(imageView)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("non prévu") }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        audioFileURL(from: sender) != nil ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard let url = audioFileURL(from: sender) else { return false }
+        onDropAudioFile?(url)
+        return true
+    }
+
+    /// N'accepte qu'un seul fichier, et seulement s'il s'agit bien d'audio : une image
+    /// ou un PDF déposé par erreur sur l'icône ne doit rien déclencher.
+    private func audioFileURL(from info: any NSDraggingInfo) -> URL? {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: [UTType.audio.identifier],
+        ]
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
+              urls.count == 1 else { return nil }
+        return urls.first
     }
 }

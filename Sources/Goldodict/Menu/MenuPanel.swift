@@ -253,6 +253,7 @@ struct MenuPanel: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 0) {
+                FooterButton(title: "Importer…", symbol: "waveform.badge.plus", perform: host.importAudioFile)
                 FooterButton(title: "Réglages…", symbol: "gearshape", perform: host.openSettings)
                 Spacer()
                 FooterButton(title: "Quitter", symbol: "power", perform: host.quit)

@@ -78,6 +78,14 @@ La pastille montre le **signal**, pas seulement l'état de l'application. Un voy
 
 Second piège, invisible au test manuel : une dictée lancée par le menu laissait `TriggerResolver` au repos, et l'appui suivant sur le raccourci en démarrait une **seconde** au lieu d'arrêter la première. D'où `adoptToggle()`, qui déclare au résolveur une bascule qu'il n'a pas vue passer.
 
+### Glisser-déposer sur l'icône : `NSStatusItem.view`, dépréciée mais seule viable
+
+Déposer un fichier audio sur l'icône (v2.3.0) demande une conformité `NSDraggingDestination` — `draggingEntered`, `performDragOperation`. Or `NSStatusItem.button` est un `NSStatusBarButton` que le système instancie lui-même : AppKit ne dispatche qu'aux méthodes réellement surchargées sur la classe concrète d'un objet, et rien ne permet de sous-classer ce bouton-là pour y ajouter les siennes.
+
+La seule voie qui reste est `NSStatusItem.view`, dépréciée depuis 10.14 au profit de `.button`, mais toujours fonctionnelle. `StatusItemDropView` est une `NSView` ordinaire portant un `NSImageView` interne — pour recevoir telles quelles les images de `StatusIcon` — et surchargeant `mouseDown` pour le clic et les deux méthodes de `NSDraggingDestination` pour le dépôt. Affecter `.view` fait passer `.button` à `nil` : `configureStatusItem()`, `reflect(_:)` et `togglePopover()` visent tous la vue déposée, plus jamais le bouton.
+
+Le filtrage du fichier déposé se fait à la lecture du pasteboard de glissement (`readObjects(forClasses:options:)`, `.urlReadingContentsConformToTypes: [UTType.audio.identifier]`), pas sur l'extension du nom — un fichier renommé sans son extension d'origine serait sinon accepté ou refusé à tort.
+
 ### L'icône de la barre des menus est dessinée à part
 
 L'icône d'application est illisible à 18 px : la visière, deux losanges, une bouche et deux arcs s'y confondent. `StatusIcon` retrace la silhouette à la main dans un `NSImage` en mode gabarit, ce qui lui vaut en prime de suivre le thème clair ou sombre du système. La bouche s'ouvre en enregistrement, et la teinte passe au rouge — une forme change en même temps que la couleur, pour ne pas reposer sur elle seule.

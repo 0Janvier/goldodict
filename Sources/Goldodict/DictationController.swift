@@ -4,6 +4,16 @@ import AVFoundation
 import Foundation
 import Observation
 
+enum AudioImportError: LocalizedError {
+    case busy
+
+    var errorDescription: String? {
+        switch self {
+        case .busy: return "une dictée est en cours, réessayez après"
+        }
+    }
+}
+
 /// Chef d'orchestre de la dictée : il relie le raccourci, la capture audio, le
 /// moteur de transcription et l'insertion du texte. Il ne connaîtra jamais qu'un
 /// protocole de moteur, jamais un moteur particulier.
@@ -514,6 +524,52 @@ final class DictationController {
                 )
             )
         }
+    }
+
+    // MARK: - Import de fichier
+
+    /// Transcrit un fichier audio existant avec le moteur actuellement sélectionné,
+    /// sans passer par le microphone ni par l'insertion.
+    ///
+    /// Reprend la chaîne de `deliver(_:)` — préparation, correction, finalisation —
+    /// mais s'arrête au texte : un import n'a pas d'application cible arrêtée au
+    /// clic, et son résultat va dans une fenêtre, pas dans l'historique des dictées
+    /// collées.
+    func transcribeAudioFile(at url: URL) async throws -> String {
+        guard !state.isBusy else {
+            throw AudioImportError.busy
+        }
+
+        Log.importing.notice("import démarré : \(url.lastPathComponent, privacy: .public)")
+
+        let engine = self.engine
+        let format = await engine.preferredAudioFormat()
+        let locale = self.locale
+        let strings = self.contextualStrings
+
+        try await engine.start(locale: locale, contextualStrings: strings, onPartialText: nil)
+        do {
+            try await AudioFileReader.read(fileAt: url, targetFormat: format) { buffer in
+                await engine.feed(buffer)
+            }
+        } catch {
+            await engine.cancel()
+            Log.importing.error("lecture du fichier : \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+        let text = try await engine.finish()
+        Log.importing.notice("transcription : \(text.count) caractères")
+
+        let profile = AppProfile.redaction
+        let prepared = pipeline.prepare(text, profile: profile)
+        guard !prepared.isEmpty else { return "" }
+
+        var corrected = prepared
+        if profile.correctText, preferences.correctionEnabled {
+            let outcome = await corrector.correct(prepared)
+            corrected = outcome.text
+        }
+        return pipeline.finalize(corrected, profile: profile)
     }
 
     private func abortCapture(reason: String) {
