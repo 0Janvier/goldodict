@@ -12,7 +12,7 @@ struct MenuPanel: View {
     let controller: DictationController
     let host: MenuBarController
 
-    private static let width: CGFloat = 300
+    private static let width: CGFloat = 380
 
     @State private var anticipatedProfile: (name: String, application: String?)?
 
@@ -35,17 +35,26 @@ struct MenuPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
+            // Alignement en haut, et non centré : sur un libellé de deux lignes, une
+            // pastille centrée verticalement flotterait entre les deux.
+            HStack(alignment: .top, spacing: 8) {
                 Circle()
                     .fill(stateTint)
                     .frame(width: 8, height: 8)
+                    .padding(.top, 4)
+                // Le libellé passe avant le nom de l'application : « 312 signes ·
+                // Microsoft Word inséré » est ce que l'utilisateur vient lire, et
+                // c'est « Goldodict » qui doit céder la largeur, jamais l'inverse.
                 Text(controller.state.label)
                     .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+                Spacer(minLength: 4)
                 Text("Goldodict")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .layoutPriority(0)
             }
             // Le profil que la prochaine dictée va cibler, utile seulement avant de
             // parler : une fois lancée, la dictée porte déjà le profil arrêté au clic.
@@ -53,7 +62,7 @@ struct MenuPanel: View {
                 Text(profileLine(anticipatedProfile))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 16)
             }
         }
@@ -282,15 +291,16 @@ private struct HistoryRow: View {
 
     var body: some View {
         Button(action: copy) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Text(entry.time)
                     .font(.system(size: 11))
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
                 Text(entry.text)
                     .font(.system(size: 12))
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .truncationMode(.tail)
+                    .multilineTextAlignment(.leading)
                 Spacer(minLength: 4)
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 10))
