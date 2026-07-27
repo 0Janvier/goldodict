@@ -72,17 +72,21 @@ final class AppleSpeechEngine: TranscriptionEngine {
         try await install(makeTranscriber(locale: supported), locale: supported)
     }
 
-    /// Rend le module utilisable, en installant l'asset de langue si nécessaire.
+    /// Rend le module utilisable par le processus courant.
     ///
-    /// **Le statut n'est pas persistant.** `AssetInventory` le rend pour le processus
-    /// courant : une installation faite au lancement couvre toutes les instances de la
-    /// session, mais tout retombe à `.supported` au processus suivant. La vérification
-    /// a donc lieu aussi à l'ouverture de chaque dictée, et pas seulement au démarrage.
+    /// **Le framework nomme presque pareil deux notions distinctes.**
+    /// `SpeechTranscriber.installedLocales` dit ce que le système a téléchargé, une
+    /// fois pour toutes. `AssetInventory.status(forModules:)` dit si le modèle est
+    /// rattaché au processus courant, et ce rattachement se perd — au lancement
+    /// suivant, mais aussi en cours de session : statut `installed` à 16 h 26,
+    /// retombé à `supported` à 17 h 41 dans le même processus.
     ///
-    /// Toutes les branches sont tracées. La version précédente rendait la main en
-    /// silence quand `assetInstallationRequest` valait `nil`, si bien que l'échec ne se
-    /// manifestait qu'à la première dictée, treize minutes plus tard, sans rien dans le
-    /// journal pour dire ce qui avait été tenté.
+    /// Le geste qui rattache est `reserve(locale:)`, pas le téléchargement. Sonde du
+    /// 27/07/2026, processus neuf, modèle déjà téléchargé : statut `supported`,
+    /// `reserve` rend `true`, statut `installed` dans la foulée, sans qu'un octet
+    /// soit transféré. La version précédente appelait bien `reserve` mais jetait son
+    /// `Bool` : une réservation refusée passait pour un succès, et l'échec ne se
+    /// manifestait qu'au verdict final, où il était imputé au téléchargement.
     static func install(_ transcriber: SpeechTranscriber, locale: Locale) async throws {
         let name = locale.identifier(.bcp47)
         let status = await AssetInventory.status(forModules: [transcriber])
@@ -97,20 +101,13 @@ final class AppleSpeechEngine: TranscriptionEngine {
             break
         }
 
-        // La réservation, elle non plus, ne survit pas à l'inactivité : le système
-        // « peut désabonner l'app d'un asset inutilisé depuis un moment » (doc Apple),
-        // et l'emporte avec elle sans le dire. Sans réservation active, la requête
-        // ci-dessous s'obtient et `downloadAndInstall()` rend la main sans erreur,
-        // mais le statut reste `.supported` — vérifié à la sonde, y compris après
-        // plusieurs secondes d'attente. Ce fut la cause réelle du bogue rapporté :
-        // la première correction (statut vérifié à chaque dictée) était nécessaire
-        // mais pas suffisante, la réservation n'étant refaite qu'au lancement.
-        do {
-            try await AssetInventory.reserve(locale: locale)
-        } catch {
-            Log.engine.notice("réservation du modèle \(name, privacy: .public) refusée : \(error.localizedDescription, privacy: .public)")
+        await attach(locale, named: name)
+        if await AssetInventory.status(forModules: [transcriber]) == .installed {
+            Log.engine.notice("modèle \(name, privacy: .public) rattaché par réservation, sans téléchargement")
+            return
         }
 
+        // Le téléchargement ne sert que si le modèle manque vraiment sur la machine.
         // `nil` n'est pas un succès : le module n'est pas installé et le système
         // n'offre rien pour l'installer. Le taire reviendrait à annoncer une
         // préparation réussie puis à échouer au premier mot dicté.
@@ -122,10 +119,47 @@ final class AppleSpeechEngine: TranscriptionEngine {
         Log.engine.notice("téléchargement du modèle \(name, privacy: .public)…")
         try await request.downloadAndInstall()
 
+        // Un téléchargement réussi laisse encore le rattachement à faire.
+        await attach(locale, named: name)
+
         let after = await AssetInventory.status(forModules: [transcriber])
         Log.engine.notice("modèle \(name, privacy: .public) : statut après installation \(String(describing: after), privacy: .public)")
         guard after == .installed else {
             throw TranscriptionEngineError.assetsMissing(name)
+        }
+    }
+
+    /// Rattache la locale au processus par réservation, en reprenant la réservation
+    /// que le système a pu révoquer.
+    ///
+    /// `reserve` rend `false` sans lever d'erreur quand il ne réserve rien, et ce
+    /// `Bool` est alors la seule trace de l'échec. Le cas décisif est celui d'une
+    /// locale qui figure encore dans `reservedLocales` alors que le rattachement est
+    /// perdu : `reserve` refuse une réservation qu'il croit déjà faite, et il faut
+    /// donc la libérer pour la reprendre.
+    private static func attach(_ locale: Locale, named name: String) async {
+        let reserved = await AssetInventory.reservedLocales
+        Log.engine.debug(
+            "réservations : \(reserved.map { $0.identifier(.bcp47) }.joined(separator: ", "), privacy: .public) sur \(AssetInventory.maximumReservedLocales, privacy: .public)"
+        )
+
+        if await reserve(locale, named: name) { return }
+
+        guard reserved.contains(where: { $0.identifier(.bcp47) == name }) else { return }
+
+        let released = await AssetInventory.release(reservedLocale: locale)
+        Log.engine.notice("réservation \(name, privacy: .public) libérée pour reprise : \(released, privacy: .public)")
+        _ = await reserve(locale, named: name)
+    }
+
+    private static func reserve(_ locale: Locale, named name: String) async -> Bool {
+        do {
+            let accepted = try await AssetInventory.reserve(locale: locale)
+            Log.engine.notice("réservation du modèle \(name, privacy: .public) : \(accepted, privacy: .public)")
+            return accepted
+        } catch {
+            Log.engine.error("réservation du modèle \(name, privacy: .public) refusée : \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 }
