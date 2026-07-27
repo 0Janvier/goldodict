@@ -14,7 +14,6 @@ struct HotkeyRecorder: View {
     @State private var kind: Kind = .combination
     @State private var lateralized = true
     @State private var monitor: Any?
-    @State private var captured: HotkeyTrigger?
 
     enum Kind: String, CaseIterable, Identifiable {
         case combination, modifierOnly, doubleTap
@@ -164,7 +163,6 @@ struct HotkeyRecorder: View {
     }
 
     private func commit(_ trigger: HotkeyTrigger) {
-        captured = trigger
         controller.updateTrigger(trigger)
         stop()
     }
