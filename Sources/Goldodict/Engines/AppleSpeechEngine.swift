@@ -133,19 +133,21 @@ final class AppleSpeechEngine: TranscriptionEngine {
     /// que le système a pu révoquer.
     ///
     /// `reserve` rend `false` sans lever d'erreur quand il ne réserve rien, et ce
-    /// `Bool` est alors la seule trace de l'échec. Le cas décisif est celui d'une
-    /// locale qui figure encore dans `reservedLocales` alors que le rattachement est
-    /// perdu : `reserve` refuse une réservation qu'il croit déjà faite, et il faut
-    /// donc la libérer pour la reprendre.
+    /// `Bool` est alors la seule trace de l'échec. La libération avant reprise est
+    /// tentée sans condition : la panne du 27/07/2026 à 18 h 54 a montré une vue
+    /// processus désynchronisée au point de tout contredire — statut `supported` et
+    /// `reserve` refusé dans l'app, pendant qu'un processus neuf lisait au même
+    /// instant `installed` et la réservation en place. Une garde fondée sur
+    /// `reservedLocales` lu depuis le processus malade ne déclenche donc jamais.
+    /// Sans réservation à libérer, `release` rend `false` et ne coûte rien.
     private static func attach(_ locale: Locale, named name: String) async {
-        let reserved = await AssetInventory.reservedLocales
-        Log.engine.debug(
-            "réservations : \(reserved.map { $0.identifier(.bcp47) }.joined(separator: ", "), privacy: .public) sur \(AssetInventory.maximumReservedLocales, privacy: .public)"
-        )
-
         if await reserve(locale, named: name) { return }
 
-        guard reserved.contains(where: { $0.identifier(.bcp47) == name }) else { return }
+        let reserved = await AssetInventory.reservedLocales.map { $0.identifier(.bcp47) }
+        let downloaded = await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) }
+        Log.engine.notice(
+            "vue du processus — réservées : [\(reserved.joined(separator: ", "), privacy: .public)] sur \(AssetInventory.maximumReservedLocales, privacy: .public), téléchargées : [\(downloaded.joined(separator: ", "), privacy: .public)]"
+        )
 
         let released = await AssetInventory.release(reservedLocale: locale)
         Log.engine.notice("réservation \(name, privacy: .public) libérée pour reprise : \(released, privacy: .public)")
