@@ -20,12 +20,23 @@ final class RecordingOverlay {
     /// la fenêtre à chaque changement obligerait à la repositionner dans le même geste,
     /// et le décalage se verrait. Une fenêtre fixe où la capsule est centrée coûte
     /// quelques pixels transparents, qui n'interceptent ni la souris ni le regard.
-    static let panelWidth: CGFloat = 520
-    static let panelHeight: CGFloat = 64
+    /// Assez large pour « What we've got here is failure to communicate.  —  Cool
+    /// Hand Luke » sans troncature, assez haut pour la variante à deux lignes.
+    static let panelWidth: CGFloat = 720
+    static let panelHeight: CGFloat = 80
 
     /// Niveau sonore instantané, fourni par la capture. Sans lui, les barres restent
     /// à plat : ce n'est pas une décoration mais la seule preuve que le micro entend.
     var levelProvider: () -> Float = { 0 }
+
+    /// Réplique de la dictée en cours, déjà mise en forme.
+    ///
+    /// Elle est tirée une fois par dictée et poussée ici, jamais calculée à
+    /// l'affichage : la pastille se redessine vingt fois par seconde, et un tirage
+    /// dans une propriété calculée changerait de film à chaque image.
+    var quote: String? {
+        didSet { model.quote = quote }
+    }
 
     private var panel: NSPanel?
     private let model = OverlayModel()
@@ -127,6 +138,7 @@ private final class OverlayModel {
     private static let silenceAlertDelay: TimeInterval = 3
 
     var state: DictationState = .idle
+    var quote: String?
     private(set) var bars: [Float] = Array(repeating: 0, count: OverlayModel.barCount)
     private(set) var elapsed: TimeInterval = 0
     private(set) var isSilent = false
@@ -177,11 +189,7 @@ private struct OverlayView: View {
                 VuMeter(bars: model.bars, tint: tint)
             }
 
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            titleView
 
             if model.state.isRecording {
                 Text(Self.clock(model.elapsed))
@@ -226,10 +234,33 @@ private struct OverlayView: View {
         }
     }
 
+    /// Le titre du format « réplique, film et année » tient sur deux lignes, séparées
+    /// par un saut de ligne. La seconde passe en secondaire : c'est la réplique qu'on
+    /// lit, sa provenance n'est qu'une mention.
+    @ViewBuilder
+    private var titleView: some View {
+        let lines = title.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(lines.first.map(String.init) ?? title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.primary)
+            if lines.count > 1 {
+                Text(String(lines[1]))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+
     /// Le silence prolongé prend la place du libellé courant : c'est la seule chose
-    /// que l'utilisateur ait besoin de lire à cet instant.
+    /// que l'utilisateur ait besoin de lire à cet instant. La réplique, elle, ne
+    /// s'affiche que pendant l'enregistrement — les états suivants rendent compte
+    /// d'un travail en cours et doivent rester factuels.
     private var title: String {
         if model.state.isRecording, model.isSilent { return "Rien n'est capté" }
+        if model.state.isRecording, let quote = model.quote, !quote.isEmpty { return quote }
         if case .inserted(let insertion) = model.state, insertion.note == nil {
             return "\(insertion.summary) inséré"
         }

@@ -43,6 +43,8 @@ else
 fi
 [[ -f "$ROOT/Resources/lexique.default.json" ]] && \
     cp "$ROOT/Resources/lexique.default.json" "$APP/Contents/Resources/"
+[[ -f "$ROOT/Resources/repliques.default.json" ]] && \
+    cp "$ROOT/Resources/repliques.default.json" "$APP/Contents/Resources/"
 [[ -d "$ROOT/sidecar" ]] && cp -R "$ROOT/sidecar" "$APP/Contents/Resources/sidecar"
 
 echo "→ purge des attributs étendus"

@@ -27,11 +27,12 @@ final class Preferences {
         static let correctionEnabled = "correction.enabled"
         static let correctionRetention = "correction.retention"
         static let ollamaModel = "correction.ollamaModel"
+        static let lineFormat = "repliques.format"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
-            correctionEnabled, correctionRetention, ollamaModel,
+            correctionEnabled, correctionRetention, ollamaModel, lineFormat,
         ]
     }
 
@@ -58,6 +59,7 @@ final class Preferences {
             Key.correctionEnabled: true,
             Key.correctionRetention: 0.75,
             Key.ollamaModel: OllamaCorrector.defaultModel,
+            Key.lineFormat: MovieLineFormat.repliqueEtFilm.rawValue,
         ])
     }
 
@@ -136,6 +138,17 @@ final class Preferences {
     var holdThreshold: Double {
         get { access(keyPath: \.holdThreshold); return defaults.double(forKey: Key.holdThreshold) }
         set { withMutation(keyPath: \.holdThreshold) { defaults.set(newValue, forKey: Key.holdThreshold) } }
+    }
+
+    // MARK: - Répliques
+
+    var lineFormat: MovieLineFormat {
+        get {
+            access(keyPath: \.lineFormat)
+            let raw = defaults.string(forKey: Key.lineFormat) ?? ""
+            return MovieLineFormat(rawValue: raw) ?? .repliqueEtFilm
+        }
+        set { withMutation(keyPath: \.lineFormat) { defaults.set(newValue.rawValue, forKey: Key.lineFormat) } }
     }
 
     // MARK: - Insertion

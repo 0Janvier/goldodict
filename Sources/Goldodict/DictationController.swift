@@ -133,7 +133,24 @@ final class DictationController {
     var locale = Locale(identifier: "fr_FR")
 
     let lexiconStore = LexiconStore()
+    let repliqueStore = RepliqueStore()
     let preferences = Preferences()
+
+    /// Réplique de la dictée en cours, tirée une fois pour toutes à son démarrage.
+    private(set) var currentLine: MovieLine?
+
+    /// Tire la réplique de la dictée qui commence et la remet à la pastille.
+    ///
+    /// Le tirage a lieu ici, et non dans `DictationState` : cet état doit rester une
+    /// valeur déterministe, et la pastille se redessine vingt fois par seconde.
+    private func drawQuote() {
+        currentLine = repliqueStore.draw()
+        overlay.quote = currentLine?.rendered(preferences.lineFormat)
+    }
+
+    func updateRepliques(_ book: MovieLineBook) {
+        repliqueStore.update(book)
+    }
 
     var microphoneGranted: Bool { PermissionGuard.microphoneStatus == .authorized }
     var accessibilityGranted: Bool { PermissionGuard.hasAccessibility() }
@@ -234,6 +251,7 @@ final class DictationController {
         }
 
         lexiconStore.load()
+        repliqueStore.load()
         profileStore.load()
         reloadPipeline()
 
@@ -374,6 +392,8 @@ final class DictationController {
             state = .failed(error.localizedDescription)
             return
         }
+
+        drawQuote()
 
         lastFailure = nil
         state = .recording(mode)

@@ -1,0 +1,152 @@
+[
+  {
+    "annee" : 1976,
+    "film" : "Taxi Driver",
+    "replique" : "You talkin' to me?"
+  },
+  {
+    "annee" : 1968,
+    "film" : "2001: A Space Odyssey",
+    "replique" : "I'm sorry, Dave. I'm afraid I can't do that."
+  },
+  {
+    "annee" : 1968,
+    "film" : "2001: A Space Odyssey",
+    "replique" : "Open the pod bay doors, HAL."
+  },
+  {
+    "annee" : 1986,
+    "film" : "Top Gun",
+    "replique" : "Talk to me, Goose."
+  },
+  {
+    "annee" : 1967,
+    "film" : "Cool Hand Luke",
+    "replique" : "What we've got here is failure to communicate."
+  },
+  {
+    "annee" : 1983,
+    "film" : "WarGames",
+    "replique" : "Shall we play a game?"
+  },
+  {
+    "annee" : 1992,
+    "film" : "Sneakers",
+    "replique" : "My voice is my passport. Verify me."
+  },
+  {
+    "annee" : 1994,
+    "film" : "Pulp Fiction",
+    "replique" : "Say 'what' again. I dare you."
+  },
+  {
+    "annee" : 1992,
+    "film" : "A Few Good Men",
+    "replique" : "You can't handle the truth!"
+  },
+  {
+    "annee" : 1983,
+    "film" : "Scarface",
+    "replique" : "Say hello to my little friend!"
+  },
+  {
+    "annee" : 1983,
+    "film" : "Sudden Impact",
+    "replique" : "Go ahead, make my day."
+  },
+  {
+    "annee" : 1951,
+    "film" : "The Day the Earth Stood Still",
+    "replique" : "Klaatu barada nikto."
+  },
+  {
+    "annee" : 1977,
+    "film" : "Star Wars",
+    "replique" : "Help me, Obi-Wan Kenobi. You're my only hope."
+  },
+  {
+    "annee" : 1996,
+    "film" : "Jerry Maguire",
+    "replique" : "You had me at hello."
+  },
+  {
+    "annee" : 1996,
+    "film" : "Jerry Maguire",
+    "replique" : "Show me the money!"
+  },
+  {
+    "annee" : 1951,
+    "film" : "A Streetcar Named Desire",
+    "replique" : "Stella! Hey, Stella!"
+  },
+  {
+    "annee" : 1987,
+    "film" : "Good Morning, Vietnam",
+    "replique" : "Good morning, Vietnam!"
+  },
+  {
+    "annee" : 1941,
+    "film" : "Citizen Kane",
+    "replique" : "Rosebud."
+  },
+  {
+    "annee" : 2001,
+    "film" : "The Lord of the Rings: The Fellowship of the Ring",
+    "replique" : "Speak, friend, and enter."
+  },
+  {
+    "annee" : 1991,
+    "film" : "The Silence of the Lambs",
+    "replique" : "Good evening, Clarice."
+  },
+  {
+    "annee" : 2000,
+    "film" : "Gladiator",
+    "replique" : "Are you not entertained?"
+  },
+  {
+    "annee" : 1987,
+    "film" : "Full Metal Jacket",
+    "replique" : "What is your major malfunction?"
+  },
+  {
+    "annee" : 1989,
+    "film" : "When Harry Met Sally...",
+    "replique" : "I'll have what she's having."
+  },
+  {
+    "annee" : 1942,
+    "film" : "Casablanca",
+    "replique" : "Here's looking at you, kid."
+  },
+  {
+    "annee" : 1986,
+    "film" : "Short Circuit",
+    "replique" : "Number Five is alive!"
+  },
+  {
+    "annee" : 1999,
+    "film" : "The Matrix",
+    "replique" : "Wake up, Neo."
+  },
+  {
+    "annee" : 1998,
+    "film" : "You've Got Mail",
+    "replique" : "You've got mail."
+  },
+  {
+    "annee" : 1984,
+    "film" : "The Terminator",
+    "replique" : "I'll be back."
+  },
+  {
+    "annee" : 1991,
+    "film" : "Terminator 2: Judgment Day",
+    "replique" : "Come with me if you want to live."
+  },
+  {
+    "annee" : 1982,
+    "film" : "E.T. the Extra-Terrestrial",
+    "replique" : "E.T. phone home."
+  }
+]

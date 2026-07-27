@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var section: Section = .dictation
 
     enum Section: String, CaseIterable, Identifiable {
-        case dictation, text, vocabulary, applications
+        case dictation, text, vocabulary, applications, repliques
 
         var id: String { rawValue }
 
@@ -27,6 +27,7 @@ struct SettingsView: View {
             case .text: return "Texte"
             case .vocabulary: return "Vocabulaire"
             case .applications: return "Applications"
+            case .repliques: return "Répliques"
             }
         }
 
@@ -36,6 +37,7 @@ struct SettingsView: View {
             case .text: return "text.alignleft"
             case .vocabulary: return "character.book.closed"
             case .applications: return "app.badge.checkmark"
+            case .repliques: return "film"
             }
         }
 
@@ -45,6 +47,7 @@ struct SettingsView: View {
             case .text: return "Correction, ponctuation, typographie"
             case .vocabulary: return "Noms propres et abréviations"
             case .applications: return "Un traitement par application"
+            case .repliques: return "Ce que dit la pastille"
             }
         }
     }
@@ -79,6 +82,7 @@ struct SettingsView: View {
                 case .text: TextSettings(controller: controller)
                 case .vocabulary: LexiconSettings(controller: controller)
                 case .applications: ProfileSettings(controller: controller)
+                case .repliques: RepliqueSettings(controller: controller)
                 }
             }
             .navigationTitle(section.title)
@@ -632,6 +636,113 @@ private struct LexiconSettings: View {
         var lexicon = controller.lexiconStore.lexicon
         for id in selection { lexicon.remove(id: id) }
         controller.updateLexicon(lexicon)
+        selection.removeAll()
+    }
+}
+
+// MARK: - Répliques
+
+/// Catalogue des répliques et mise en forme de la pastille.
+///
+/// Le choix du format est une liste, et non un menu déroulant : chaque ligne montre
+/// le rendu exact plutôt que de le décrire, et les flèches du clavier suffisent à
+/// passer de l'un à l'autre en voyant ce qui change.
+private struct RepliqueSettings: View {
+    let controller: DictationController
+    @State private var selection: Set<String> = []
+    @State private var newQuote = ""
+    @State private var newFilm = ""
+    @State private var newYear = ""
+
+    /// Réplique d'aperçu, fixe. Un tirage au sort dans cet écran rendrait le menu
+    /// illisible : le rendu changerait en même temps que le format.
+    private static let sample = MovieLine(replique: "You talkin' to me?", film: "Taxi Driver", annee: 1976)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Pendant la dictée, la pastille affiche une réplique de cinéma tirée au sort. Le format se choisit ici, aux flèches du clavier.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            List(MovieLineFormat.allCases, selection: formatBinding) { format in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(format.label)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text(Self.sample.rendered(format))
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(height: 150)
+
+            Table(controller.repliqueStore.book.lines, selection: $selection) {
+                TableColumn("Réplique", value: \.replique)
+                TableColumn("Film", value: \.film)
+                TableColumn("Année") { line in Text(String(line.annee)) }
+                    .width(60)
+            }
+            .frame(minHeight: 160)
+
+            HStack(spacing: 8) {
+                TextField("Réplique", text: $newQuote)
+                TextField("Film", text: $newFilm)
+                TextField("Année", text: $newYear)
+                    .frame(width: 60)
+                Button("Ajouter", action: add)
+                    .disabled(!canAdd)
+                Button("Supprimer", action: removeSelected)
+                    .disabled(selection.isEmpty)
+            }
+
+            HStack {
+                Button("Ouvrir le fichier") {
+                    NSWorkspace.shared.activateFileViewerSelecting([RepliqueStore.fileURL])
+                }
+                Button("Rétablir le catalogue livré") {
+                    controller.repliqueStore.restoreDefaults()
+                }
+                Spacer()
+                Text(RepliqueStore.fileURL.path)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .padding(20)
+    }
+
+    /// La sélection d'une `List` porte sur l'identifiant de l'élément, jamais sur
+    /// l'élément lui-même.
+    private var formatBinding: Binding<MovieLineFormat.ID?> {
+        Binding(
+            get: { controller.preferences.lineFormat.id },
+            set: { raw in
+                guard let raw, let value = MovieLineFormat(rawValue: raw) else { return }
+                controller.preferences.lineFormat = value
+            }
+        )
+    }
+
+    private var canAdd: Bool {
+        !newQuote.trimmed.isEmpty && !newFilm.trimmed.isEmpty && Int(newYear.trimmed) != nil
+    }
+
+    private func add() {
+        guard let year = Int(newYear.trimmed) else { return }
+        var book = controller.repliqueStore.book
+        book.upsert(MovieLine(replique: newQuote.trimmed, film: newFilm.trimmed, annee: year))
+        controller.updateRepliques(book)
+        newQuote = ""
+        newFilm = ""
+        newYear = ""
+    }
+
+    private func removeSelected() {
+        var book = controller.repliqueStore.book
+        for id in selection { book.remove(id: id) }
+        controller.updateRepliques(book)
         selection.removeAll()
     }
 }
