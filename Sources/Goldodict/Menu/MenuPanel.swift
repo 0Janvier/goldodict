@@ -34,27 +34,47 @@ struct MenuPanel: View {
     // MARK: - En-tête
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
+            // La marque passe en tête de panneau, en retrait : elle n'a aucune valeur
+            // d'information et n'a donc plus à disputer la largeur au libellé d'état.
+            Text("Goldodict")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 14)
+
+            stateCard
+                .padding(.horizontal, 10)
+        }
+        .padding(.top, 9)
+        .padding(.bottom, 12)
+    }
+
+    /// L'état tient dans une carte qui prend la couleur du moment. Le panneau s'ouvre
+    /// le plus souvent pour vérifier où l'on en est, et une pastille de huit points
+    /// répond trop discrètement à cette question.
+    private var stateCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
             // Alignement en haut, et non centré : sur un libellé de deux lignes, une
             // pastille centrée verticalement flotterait entre les deux.
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: 7) {
                 Circle()
                     .fill(stateTint)
                     .frame(width: 8, height: 8)
                     .padding(.top, 4)
-                // Le libellé passe avant le nom de l'application : « 312 signes ·
-                // Microsoft Word inséré » est ce que l'utilisateur vient lire, et
-                // c'est « Goldodict » qui doit céder la largeur, jamais l'inverse.
                 Text(controller.state.label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
-                Spacer(minLength: 4)
-                Text("Goldodict")
+                Spacer(minLength: 6)
+                // Le même raccourci lance et arrête : il vaut donc pour tous les états,
+                // et non pour le seul bouton de lancement où il figurait.
+                Text(controller.triggerDisplayString)
                     .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .layoutPriority(0)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
             }
             // Le profil que la prochaine dictée va cibler, utile seulement avant de
             // parler : une fois lancée, la dictée porte déjà le profil arrêté au clic.
@@ -63,12 +83,17 @@ struct MenuPanel: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 16)
+                    .padding(.leading, 15)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(stateTint.opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(stateTint.opacity(0.28), lineWidth: 0.5)
+        )
     }
 
     private func profileLine(_ profile: (name: String, application: String?)) -> String {
@@ -159,29 +184,38 @@ struct MenuPanel: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button(action: host.dictate) {
-                HStack(spacing: 8) {
-                    Image(systemName: controller.state.isRecording ? "stop.fill" : "mic.fill")
-                    Text(controller.state.isRecording ? "Arrêter la dictée" : "Dicter maintenant")
-                    Spacer(minLength: 8)
-                    Text(controller.triggerDisplayString)
-                        .foregroundStyle(.secondary)
+            // Dicter et importer sont deux sources d'entrée pour un même traitement.
+            // L'import a donc sa place ici, en secondaire, et non dans le pied parmi
+            // les utilitaires où il était rangé à son arrivée.
+            VStack(spacing: 7) {
+                Button(action: host.dictate) {
+                    HStack(spacing: 8) {
+                        Image(systemName: controller.state.isRecording ? "stop.fill" : "mic.fill")
+                        Text(controller.state.isRecording ? "Arrêter la dictée" : "Dicter maintenant")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(controller.state.isRecording ? .red : .accentColor)
+                .disabled(controller.state.isBusy && !controller.state.isRecording)
+
+                Button(action: host.importAudioFile) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform.badge.plus")
+                        Text("Importer un fichier audio…")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(controller.state.isBusy)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(controller.state.isRecording ? .red : .accentColor)
-            .disabled(controller.state.isBusy && !controller.state.isRecording)
 
             // Seule preuve, pour qui a rouvert le panneau en cours de dictée, que le
             // micro entend — même lecture que la pastille flottante.
             if controller.state.isRecording {
                 MenuLevelMeter(level: { controller.currentLevel })
-            } else {
-                Text("Appui bref pour basculer, maintenu pour parler.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 8) {
@@ -253,7 +287,6 @@ struct MenuPanel: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 0) {
-                FooterButton(title: "Importer…", symbol: "waveform.badge.plus", perform: host.importAudioFile)
                 FooterButton(title: "Réglages…", symbol: "gearshape", perform: host.openSettings)
                 Spacer()
                 FooterButton(title: "Quitter", symbol: "power", perform: host.quit)
