@@ -22,13 +22,17 @@ struct MenuPanel: View {
             failure
             permissions
             actions
+            dossier
             history
             footer
         }
         .frame(width: Self.width)
         // Le panneau reste en mémoire d'une ouverture à l'autre : sans ce rappel,
         // l'application relevée par `host` resterait celle de la fois précédente.
-        .onAppear { anticipatedProfile = host.anticipatedProfile }
+        .onAppear {
+            anticipatedProfile = host.anticipatedProfile
+            controller.refreshDossiers()
+        }
     }
 
     // MARK: - En-tête
@@ -239,6 +243,74 @@ struct MenuPanel: View {
             get: { controller.currentEngineIdentifier },
             set: { controller.selectEngine(identifier: $0) }
         )
+    }
+
+    // MARK: - Dossier actif (pont Goldocab)
+
+    /// La section n'apparaît que si Goldocab a des dossiers ouverts : sans base,
+    /// Goldodict reste une app de dictée ordinaire, sans case vide qui interroge.
+    @ViewBuilder
+    private var dossier: some View {
+        if !controller.availableDossiers.isEmpty {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("DOSSIER")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+
+                Picker("", selection: dossierSelection) {
+                    Text("Aucun dossier").tag(Int64?.none)
+                    ForEach(controller.availableDossiers) { dossier in
+                        Text("\(dossier.code) · \(dossier.titre)")
+                            .lineLimit(1)
+                            .tag(Int64?.some(dossier.id))
+                    }
+                }
+                .labelsHidden()
+
+                if let active = controller.activeDossier {
+                    HStack(spacing: 6) {
+                        Image(systemName: "text.book.closed")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text("\(active.terms.count) termes transmis aux moteurs")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+
+                    if controller.dossierSessionSeconds >= 1 {
+                        Button {
+                            controller.imputeDossierSession()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "clock.badge.checkmark")
+                                Text("Imputer \(imputedMinutes) min au \(active.code)")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private var dossierSelection: Binding<Int64?> {
+        Binding(
+            get: { controller.activeDossier?.id },
+            set: { id in
+                controller.selectDossier(controller.availableDossiers.first { $0.id == id })
+            }
+        )
+    }
+
+    /// Même arrondi que l'écriture déposée : à la minute supérieure, jamais zéro.
+    private var imputedMinutes: Int {
+        max(1, Int((controller.dossierSessionSeconds / 60).rounded(.up)))
     }
 
     // MARK: - Historique

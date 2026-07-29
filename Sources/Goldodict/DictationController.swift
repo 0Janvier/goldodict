@@ -234,8 +234,67 @@ final class DictationController {
     /// même raison : il sert à confirmer où le texte est parti.
     private var activeApplicationName: String?
 
-    /// Vocabulaire transmis au moteur avant transcription, tiré du lexique.
-    private var contextualStrings: [String] { lexiconStore.lexicon.contextualStrings }
+    /// Vocabulaire transmis au moteur avant transcription : le lexique, enrichi
+    /// des termes du dossier actif quand il y en a un.
+    private var contextualStrings: [String] {
+        lexiconStore.lexicon.contextualStrings + (activeDossier?.terms ?? [])
+    }
+
+    // MARK: - Dossier actif (pont Goldocab)
+
+    private let goldocabReader = GoldocabReader()
+
+    /// Dossier Goldocab sélectionné dans le panneau. Éphémère : jamais persisté,
+    /// son vocabulaire disparaît avec lui.
+    private(set) var activeDossier: DossierContext?
+
+    /// Dossiers ouverts dans Goldocab, rafraîchis à l'ouverture du panneau.
+    private(set) var availableDossiers: [DossierContext] = []
+
+    /// Temps de dictée cumulé sur le dossier actif depuis sa sélection ou la
+    /// dernière imputation.
+    private(set) var dossierSessionSeconds: TimeInterval = 0
+    private var dossierSessionStart: Date?
+    private var captureStartedAt: Date?
+
+    func refreshDossiers() {
+        availableDossiers = goldocabReader.activeDossiers()
+        // Le dossier actif suit la base : s'il a été clos entre-temps, il sort.
+        if let current = activeDossier,
+           !availableDossiers.contains(where: { $0.id == current.id }) {
+            selectDossier(nil)
+        }
+    }
+
+    func selectDossier(_ dossier: DossierContext?) {
+        guard dossier?.id != activeDossier?.id else { return }
+        activeDossier = dossier
+        dossierSessionSeconds = 0
+        dossierSessionStart = nil
+        if let dossier {
+            Log.goldocab.notice("dossier actif : \(dossier.code, privacy: .public) (\(dossier.terms.count) termes)")
+        } else {
+            Log.goldocab.notice("aucun dossier actif")
+        }
+    }
+
+    /// Dépose le cumul de la session dans l'outbox Goldocab. Geste explicite,
+    /// jamais automatique : l'entrée arrive « à revoir » côté Goldocab.
+    func imputeDossierSession() {
+        guard let dossier = activeDossier, dossierSessionSeconds > 0 else { return }
+        do {
+            try OutboxWriter.deposit(.dictation(
+                dossier: dossier,
+                startedAt: dossierSessionStart ?? Date(),
+                duration: dossierSessionSeconds
+            ))
+            dossierSessionSeconds = 0
+            dossierSessionStart = nil
+        } catch {
+            Log.goldocab.error("imputation impossible : \(error.localizedDescription, privacy: .public)")
+            lastFailure = "imputation : \(error.localizedDescription)"
+        }
+    }
 
     private var relay: BufferRelay?
 
@@ -426,6 +485,8 @@ final class DictationController {
         lastFailure = nil
         state = .recording(mode)
         play(.start)
+        captureStartedAt = Date()
+        if activeDossier != nil, dossierSessionStart == nil { dossierSessionStart = captureStartedAt }
         Log.audio.notice("capture démarrée (\(String(describing: mode), privacy: .public))")
 
         let engine = self.engine
@@ -458,6 +519,10 @@ final class DictationController {
         capture.onBuffer = nil
         play(.stop)
         state = .transcribing
+        if activeDossier != nil, let start = captureStartedAt {
+            dossierSessionSeconds += Date().timeIntervalSince(start)
+        }
+        captureStartedAt = nil
         Log.audio.debug("capture arrêtée, \(samples) échantillons accumulés")
 
         let engine = self.engine

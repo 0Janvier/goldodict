@@ -9,4 +9,5 @@ enum Log {
     static let engine = Logger(subsystem: "fr.sztulman.goldodict", category: "engine")
     static let output = Logger(subsystem: "fr.sztulman.goldodict", category: "output")
     static let importing = Logger(subsystem: "fr.sztulman.goldodict", category: "import")
+    static let goldocab = Logger(subsystem: "fr.sztulman.goldodict", category: "goldocab")
 }
