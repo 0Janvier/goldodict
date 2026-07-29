@@ -213,7 +213,18 @@ struct MenuPanel: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .disabled(controller.state.isBusy)
+                .disabled(controller.isOccupied)
+
+                Button(action: host.openArchitect) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.text.below.ecg")
+                        Text("Dicter un document long…")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(controller.isOccupied)
             }
 
             // Seule preuve, pour qui a rouvert le panneau en cours de dictée, que le
@@ -447,7 +458,7 @@ private struct HistoryRow: View {
 /// Vumètre compact du panneau. Même calcul que la pastille flottante
 /// (`AudioLevel.normalized`/`smoothed`, dans `GoldodictCore`), mais indépendant d'elle :
 /// le panneau peut rester ouvert pendant une dictée sans dépendre de la pastille.
-private struct MenuLevelMeter: View {
+struct MenuLevelMeter: View {
     let level: () -> Float
 
     private static let barCount = 5

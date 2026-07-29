@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var settingsWindow = SettingsWindowController(controller: controller)
     private lazy var onboardingWindow = OnboardingWindowController(controller: controller)
     private lazy var importWindow = AudioImportWindowController(controller: controller)
+    private lazy var architectWindow = ArchitectWindowController(controller: controller)
     private var menuBar: MenuBarController?
 
     private static let firstRunKey = "didPresentOnboarding"
@@ -24,7 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings: { [weak self] in self?.settingsWindow.show() },
             importAudio: { [weak self] url, application in
                 self?.importWindow.transcribe(fileAt: url, returningTo: application)
-            }
+            },
+            openArchitect: { [weak self] in self?.architectWindow.open() }
         )
 
         controller.activate()

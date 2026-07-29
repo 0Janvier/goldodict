@@ -278,6 +278,30 @@ final class DictationController {
         }
     }
 
+    // MARK: - Mode document (l'Architecte)
+
+    /// Une session de document occupe le moteur Whisper et le micro : la dictée
+    /// ordinaire est suspendue tant qu'elle dure.
+    private(set) var architectActive = false
+
+    /// L'application est-elle accaparée, par une dictée ou par une session de
+    /// document ? C'est la garde des boutons du panneau.
+    var isOccupied: Bool { state.isBusy || architectActive }
+
+    /// Assemble une session de document, ou refuse si quelque chose tourne déjà.
+    func makeArchitectSession() -> ArchitectSession? {
+        guard !isOccupied else { return nil }
+        architectActive = true
+        return ArchitectSession(
+            engine: whisperEngine,
+            corrector: corrector,
+            pipeline: pipeline,
+            contextualStrings: contextualStrings,
+            locale: locale,
+            onRelease: { [weak self] in self?.architectActive = false }
+        )
+    }
+
     /// Dépose le cumul de la session dans l'outbox Goldocab. Geste explicite,
     /// jamais automatique : l'entrée arrive « à revoir » côté Goldocab.
     func imputeDossierSession() {
@@ -439,6 +463,11 @@ final class DictationController {
     }
 
     private func beginCapture(mode: TriggerMode) {
+        // Une session de document occupe déjà le micro et le moteur.
+        guard !architectActive else {
+            resolver.reset()
+            return
+        }
         guard PermissionGuard.microphoneStatus == .authorized else {
             resolver.reset()
             state = .failed("microphone non autorisé")
@@ -601,7 +630,7 @@ final class DictationController {
     /// clic, et son résultat va dans une fenêtre, pas dans l'historique des dictées
     /// collées.
     func transcribeAudioFile(at url: URL) async throws -> String {
-        guard !state.isBusy else {
+        guard !isOccupied else {
             throw AudioImportError.busy
         }
 
