@@ -269,6 +269,42 @@ final class DictationController {
         }
     }
 
+    // MARK: - Relais de relance
+
+    private static let handoffKey = "speechRelaunchHandoff"
+
+    /// Dépose l'état éphémère qui ne doit pas se perdre dans une relance
+    /// automatique : le dossier actif et son temps non imputé. Écrit juste avant
+    /// la relance, lu et effacé au lancement suivant — ce n'est pas une
+    /// persistance, le dossier reste éphémère hors de ce cas.
+    func prepareRelaunchHandoff() {
+        guard let dossier = activeDossier else { return }
+        var payload: [String: Any] = [
+            "dossierId": NSNumber(value: dossier.id),
+            "seconds": dossierSessionSeconds,
+        ]
+        if let start = dossierSessionStart {
+            payload["start"] = start.timeIntervalSince1970
+        }
+        UserDefaults.standard.set(payload, forKey: Self.handoffKey)
+    }
+
+    /// Reprend l'état déposé par `prepareRelaunchHandoff()`, s'il y en a un.
+    private func restoreRelaunchHandoff() {
+        guard let payload = UserDefaults.standard.dictionary(forKey: Self.handoffKey) else { return }
+        UserDefaults.standard.removeObject(forKey: Self.handoffKey)
+        guard let id = (payload["dossierId"] as? NSNumber)?.int64Value else { return }
+
+        availableDossiers = goldocabReader.activeDossiers()
+        guard let dossier = availableDossiers.first(where: { $0.id == id }) else { return }
+        activeDossier = dossier
+        dossierSessionSeconds = payload["seconds"] as? Double ?? 0
+        if let start = payload["start"] as? Double {
+            dossierSessionStart = Date(timeIntervalSince1970: start)
+        }
+        Log.goldocab.notice("dossier \(dossier.code, privacy: .public) repris après relance (\(Int(self.dossierSessionSeconds)) s en cours)")
+    }
+
     func selectDossier(_ dossier: DossierContext?) {
         guard dossier?.id != activeDossier?.id else { return }
         activeDossier = dossier
@@ -415,6 +451,7 @@ final class DictationController {
         profileStore.load()
         styleObservationStore.load()
         reloadPipeline()
+        restoreRelaunchHandoff()
 
         // Le préchargement du modèle Ollama est déterminant : à froid, la première
         // correction demande près de huit secondes et serait abandonnée pour rien.

@@ -129,6 +129,50 @@ final class AppleSpeechEngine: TranscriptionEngine {
         }
     }
 
+    /// Verdict de la sonde de santé du service de reconnaissance.
+    enum ServiceHealth {
+        /// Le modèle est rattaché au processus, la dictée fonctionnera.
+        case healthy
+        /// Le modèle est téléchargé mais le rattachement échoue : la connexion XPC
+        /// du framework vers le démon est morte et ne reviendra pas dans ce
+        /// processus. Seule une relance de l'application répare.
+        case deadConnection
+        /// Le modèle manque vraiment ou la langue n'est pas prise en charge —
+        /// relancer n'y changerait rien.
+        case degraded
+    }
+
+    /// Sonde l'état du service sans rien télécharger.
+    ///
+    /// macOS arrête le démon Speech après une période d'inactivité et le framework,
+    /// qui tient sa connexion XPC dans un singleton, ne la recrée jamais : chaque
+    /// appel à `AssetInventory` échoue alors en silence (erreur 4099 dans le journal)
+    /// en rendant `supported`, `false` et des listes vides. Constaté le 29/07/2026 :
+    /// dictées saines jusqu'à 11 h 45, connexion morte à 14 h 49 après trois heures
+    /// de repos, état identique trente et une minutes plus tard. La signature de cet
+    /// état : le rattachement refuse alors que `SpeechTranscriber.installedLocales`
+    /// — qui, lui, répond juste même connexion morte — contient bien la langue.
+    static func probeHealth(locale: Locale) async -> ServiceHealth {
+        guard SpeechTranscriber.isAvailable,
+              let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
+            return .degraded
+        }
+        let transcriber = makeTranscriber(locale: supported)
+        if await AssetInventory.status(forModules: [transcriber]) == .installed {
+            return .healthy
+        }
+        let name = supported.identifier(.bcp47)
+        await attach(supported, named: name)
+        if await AssetInventory.status(forModules: [transcriber]) == .installed {
+            return .healthy
+        }
+        let downloaded = await SpeechTranscriber.installedLocales
+        if downloaded.contains(where: { $0.identifier(.bcp47) == name }) {
+            return .deadConnection
+        }
+        return .degraded
+    }
+
     /// Rattache la locale au processus par réservation, en reprenant la réservation
     /// que le système a pu révoquer.
     ///
