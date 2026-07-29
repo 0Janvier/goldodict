@@ -45,10 +45,10 @@ final class OllamaCorrector: TextCorrector {
         Log.engine.notice("modèle Ollama préchargé : \(self.model, privacy: .public)")
     }
 
-    func correct(_ text: String) async throws -> String {
+    func correct(_ text: String, styleNotes: [String]) async throws -> String {
         let body: [String: Any] = [
             "model": model,
-            "system": CorrectionPrompt.instructions,
+            "system": CorrectionPrompt.instructions(styleNotes: styleNotes),
             "prompt": CorrectionPrompt.prompt(for: text),
             "stream": false,
             // Les modèles de la famille Qwen 3 raisonnent à voix haute par défaut,

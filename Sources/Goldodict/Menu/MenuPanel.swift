@@ -24,6 +24,7 @@ struct MenuPanel: View {
             actions
             dossier
             history
+            styleLearning
             footer
         }
         .frame(width: Self.width)
@@ -337,6 +338,11 @@ struct MenuPanel: View {
                     .foregroundStyle(.tertiary)
                 Spacer()
                 if !controller.history.isEmpty {
+                    Button("Reprendre…") { host.reviewLastDictation() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .help("Corriger la dernière dictée pour que Goldodict apprenne")
                     Button("Effacer") { controller.clearHistory() }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -362,6 +368,43 @@ struct MenuPanel: View {
             }
         }
         .padding(.bottom, 8)
+    }
+
+    // MARK: - Style appris
+
+    /// Une seule proposition à la fois : le panneau propose, les réglages listent.
+    @ViewBuilder
+    private var styleLearning: some View {
+        if let proposal = controller.styleProposals.first {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("STYLE APPRIS")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+
+                Text("« \(proposal.before) » → « \(proposal.after) »")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
+
+                Text("\(proposal.occurrences) fois · profil \(proposal.profileName) · \(proposal.kind == .lexicon ? "lexique" : "règle de style")")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    Button("Adopter") { controller.acceptStyleProposal(proposal, as: proposal.kind) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .keyboardShortcut(.return, modifiers: [])
+                    Button("Ignorer") { controller.dismissStyleProposal(proposal) }
+                        .controlSize(.small)
+                        .keyboardShortcut(.escape, modifiers: [])
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
     }
 
     // MARK: - Pied

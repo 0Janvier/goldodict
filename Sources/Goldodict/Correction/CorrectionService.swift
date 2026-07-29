@@ -57,7 +57,7 @@ actor CorrectionService {
         await (apple.isAvailable(), ollama.isAvailable())
     }
 
-    func correct(_ raw: String) async -> Outcome {
+    func correct(_ raw: String, styleNotes: [String] = []) async -> Outcome {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return Outcome(text: raw, applied: false, note: nil)
@@ -69,7 +69,7 @@ actor CorrectionService {
         for corrector in [apple as TextCorrector, ollama as TextCorrector] {
             do {
                 let corrected = try await withDeadline(Self.deadline) {
-                    try await corrector.correct(trimmed)
+                    try await corrector.correct(trimmed, styleNotes: styleNotes)
                 }
                 let verdict = guardRail.evaluate(raw: trimmed, corrected: corrected)
                 Log.engine.notice(

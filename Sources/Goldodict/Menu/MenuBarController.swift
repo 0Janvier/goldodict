@@ -22,6 +22,7 @@ final class MenuBarController {
     private let openSettingsAction: () -> Void
     private let importAudioAction: (URL, NSRunningApplication?) -> Void
     private let openArchitectAction: () -> Void
+    private let reviewDictationAction: (DictationController.Dictation) -> Void
 
     private let statusItem: NSStatusItem
     private let dropView: StatusItemDropView
@@ -35,12 +36,14 @@ final class MenuBarController {
         controller: DictationController,
         openSettings: @escaping () -> Void,
         importAudio: @escaping (URL, NSRunningApplication?) -> Void,
-        openArchitect: @escaping () -> Void
+        openArchitect: @escaping () -> Void,
+        reviewDictation: @escaping (DictationController.Dictation) -> Void
     ) {
         self.controller = controller
         self.openSettingsAction = openSettings
         self.importAudioAction = importAudio
         self.openArchitectAction = openArchitect
+        self.reviewDictationAction = reviewDictation
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.dropView = StatusItemDropView(
             frame: NSRect(x: 0, y: 0, width: NSStatusItem.squareLength, height: NSStatusBar.system.thickness)
@@ -128,6 +131,13 @@ final class MenuBarController {
     ///
     /// Refusé pendant une dictée en cours : le moteur de transcription ne tient
     /// qu'une session à la fois, live ou importée.
+    /// Ouvre la fenêtre de reprise sur la dictée la plus récente.
+    func reviewLastDictation() {
+        guard let last = controller.history.first else { return }
+        close()
+        reviewDictationAction(last)
+    }
+
     /// Ouvre la fenêtre du mode document. La garde d'occupation vit dans le
     /// contrôleur, qui refuse d'assembler une session si quelque chose tourne.
     func openArchitect() {

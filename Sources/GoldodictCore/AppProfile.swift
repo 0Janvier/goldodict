@@ -24,6 +24,9 @@ public struct AppProfile: Codable, Equatable, Sendable, Identifiable {
     public var frenchTypography: Bool
     /// Appliquer le lexique de correction du vocabulaire.
     public var applyLexicon: Bool
+    /// Règles de style apprises ou écrites à la main, ajoutées aux instructions
+    /// du correcteur pour ce profil.
+    public var styleNotes: [String]
 
     public init(
         name: String,
@@ -32,7 +35,8 @@ public struct AppProfile: Codable, Equatable, Sendable, Identifiable {
         punctuationCommands: Bool,
         capitalizeSentences: Bool,
         frenchTypography: Bool,
-        applyLexicon: Bool = true
+        applyLexicon: Bool = true,
+        styleNotes: [String] = []
     ) {
         self.name = name
         self.bundleIdentifiers = bundleIdentifiers
@@ -41,11 +45,12 @@ public struct AppProfile: Codable, Equatable, Sendable, Identifiable {
         self.capitalizeSentences = capitalizeSentences
         self.frenchTypography = frenchTypography
         self.applyLexicon = applyLexicon
+        self.styleNotes = styleNotes
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, bundleIdentifiers, correctText, punctuationCommands
-        case capitalizeSentences, frenchTypography, applyLexicon
+        case capitalizeSentences, frenchTypography, applyLexicon, styleNotes
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,6 +62,7 @@ public struct AppProfile: Codable, Equatable, Sendable, Identifiable {
         capitalizeSentences = try container.decode(Bool.self, forKey: .capitalizeSentences)
         frenchTypography = try container.decode(Bool.self, forKey: .frenchTypography)
         applyLexicon = try container.decodeIfPresent(Bool.self, forKey: .applyLexicon) ?? true
+        styleNotes = try container.decodeIfPresent([String].self, forKey: .styleNotes) ?? []
     }
 }
 

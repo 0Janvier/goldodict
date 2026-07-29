@@ -89,6 +89,9 @@ final class DictationController {
         let id = UUID()
         let text: String
         let date: Date
+        /// Profil qui a traité la dictée : c'est à lui que profitera une
+        /// correction relevée dans la fenêtre de reprise.
+        let profileName: String
 
         /// « 14:32 ». L'heure suffit : l'historique ne survit pas à la session.
         var time: String {
@@ -278,6 +281,60 @@ final class DictationController {
         }
     }
 
+    // MARK: - Style vivant (apprentissage des corrections)
+
+    let styleObservationStore = StyleObservationStore()
+
+    /// Relève les corrections d'une dictée reprise à la main. Rend le nombre de
+    /// paires retenues — zéro n'est pas un échec, juste rien à apprendre.
+    @discardableResult
+    func submitStyleCorrection(original: String, corrected: String, profileName: String) -> Int {
+        guard preferences.styleLearningEnabled else { return 0 }
+        let before = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        let after = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard before != after else { return 0 }
+
+        let pairs = StyleDiffEngine.discardingAlreadyHandled(
+            StyleDiffEngine.diff(original: before, corrected: after),
+            lexicon: lexiconStore.lexicon
+        )
+        for pair in pairs {
+            styleObservationStore.record(
+                before: pair.before,
+                after: pair.after,
+                profileName: profileName,
+                kind: StyleDiffEngine.classify(pair)
+            )
+        }
+        return pairs.count
+    }
+
+    /// Les corrections récurrentes mûres pour une décision.
+    var styleProposals: [StyleObservation] {
+        styleObservationStore.observations.proposals()
+    }
+
+    func acceptStyleProposal(_ observation: StyleObservation, as kind: StyleSuggestionKind) {
+        switch kind {
+        case .lexicon:
+            var lexicon = lexiconStore.lexicon
+            lexicon.upsert(LexiconEntry(entendu: observation.before, corrige: observation.after))
+            updateLexicon(lexicon)
+        case .style:
+            guard var profile = profileStore.profiles.profile(named: observation.profileName) else { break }
+            let note = StyleDiffEngine.styleInstruction(before: observation.before, after: observation.after)
+            if !profile.styleNotes.contains(note) {
+                profile.styleNotes.append(note)
+                updateProfile(profile)
+            }
+        }
+        styleObservationStore.setStatus(.accepted, id: observation.id)
+    }
+
+    func dismissStyleProposal(_ observation: StyleObservation) {
+        styleObservationStore.setStatus(.dismissed, id: observation.id)
+    }
+
     // MARK: - Mode document (l'Architecte)
 
     /// Une session de document occupe le moteur Whisper et le micro : la dictée
@@ -356,6 +413,7 @@ final class DictationController {
         lexiconStore.load()
         repliqueStore.load()
         profileStore.load()
+        styleObservationStore.load()
         reloadPipeline()
 
         // Le préchargement du modèle Ollama est déterminant : à froid, la première
@@ -585,7 +643,7 @@ final class DictationController {
 
         if profile.correctText, preferences.correctionEnabled {
             state = .correcting
-            let outcome = await corrector.correct(prepared)
+            let outcome = await corrector.correct(prepared, styleNotes: profile.styleNotes)
             corrected = outcome.text
             note = outcome.note
         }
@@ -602,7 +660,7 @@ final class DictationController {
             autoPaste: preferences.autoPaste,
             restorePasteboard: preferences.restorePasteboard
         )
-        record(transcript: cleaned)
+        record(transcript: cleaned, profileName: profile.name)
 
         if outcome != .pasted {
             state = .failed("texte copié, Accessibilité non autorisée")
@@ -660,7 +718,7 @@ final class DictationController {
 
         var corrected = prepared
         if profile.correctText, preferences.correctionEnabled {
-            let outcome = await corrector.correct(prepared)
+            let outcome = await corrector.correct(prepared, styleNotes: profile.styleNotes)
             corrected = outcome.text
         }
         return pipeline.finalize(corrected, profile: profile)
@@ -682,10 +740,10 @@ final class DictationController {
 
     // MARK: - Historique
 
-    func record(transcript: String) {
+    func record(transcript: String, profileName: String = AppProfile.redaction.name) {
         guard !transcript.isEmpty else { return }
         lastTranscript = transcript
-        history.insert(Dictation(text: transcript, date: Date()), at: 0)
+        history.insert(Dictation(text: transcript, date: Date(), profileName: profileName), at: 0)
         if history.count > historyLimit {
             history.removeLast(history.count - historyLimit)
         }

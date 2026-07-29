@@ -42,35 +42,42 @@ final class AppleFoundationCorrector: TextCorrector {
         await holder.prepare()
     }
 
-    func correct(_ text: String) async throws -> String {
-        try await holder.correct(text)
+    func correct(_ text: String, styleNotes: [String]) async throws -> String {
+        try await holder.correct(text, styleNotes: styleNotes)
     }
 }
 
-/// La session est conservée entre deux corrections : la recréer à chaque dictée
-/// referait payer l'initialisation du modèle.
+/// Les sessions sont conservées entre deux corrections : les recréer à chaque
+/// dictée referait payer l'initialisation du modèle. Il y en a une par jeu de
+/// règles de style — en pratique, une par profil réellement utilisé.
 private actor SessionHolder {
 
-    private var session: LanguageModelSession?
+    private var sessions: [String: LanguageModelSession] = [:]
 
-    private func makeSession() -> LanguageModelSession {
-        LanguageModelSession(instructions: CorrectionPrompt.instructions)
+    private func makeSession(styleNotes: [String]) -> LanguageModelSession {
+        LanguageModelSession(instructions: CorrectionPrompt.instructions(styleNotes: styleNotes))
+    }
+
+    private static func key(for styleNotes: [String]) -> String {
+        styleNotes.joined(separator: "\u{1}")
     }
 
     func prepare() {
         guard SystemLanguageModel.default.isAvailable else { return }
-        if session == nil { session = makeSession() }
+        let key = Self.key(for: [])
+        if sessions[key] == nil { sessions[key] = makeSession(styleNotes: []) }
     }
 
-    func correct(_ text: String) async throws -> String {
+    func correct(_ text: String, styleNotes: [String]) async throws -> String {
         guard SystemLanguageModel.default.isAvailable else {
             throw CorrectionError.unavailable(
                 AppleFoundationCorrector.unavailabilityReason ?? "Apple"
             )
         }
 
-        let session = session ?? makeSession()
-        self.session = session
+        let key = Self.key(for: styleNotes)
+        let session = sessions[key] ?? makeSession(styleNotes: styleNotes)
+        sessions[key] = session
 
         // Température basse : on veut une correction reproductible, pas une variation
         // stylistique. Le plafond de jetons évite qu'un modèle parti en digression
@@ -89,10 +96,10 @@ private actor SessionHolder {
         } catch let error as LanguageModelSession.GenerationError {
             // Une session ayant refusé un contenu reste marquée : on la jette pour
             // que la dictée suivante reparte sur une session saine.
-            self.session = nil
+            sessions[key] = nil
             throw Self.translate(error)
         } catch {
-            self.session = nil
+            sessions[key] = nil
             throw CorrectionError.failed(error.localizedDescription)
         }
     }

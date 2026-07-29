@@ -29,11 +29,13 @@ final class Preferences {
         static let ollamaModel = "correction.ollamaModel"
         static let lineFormat = "repliques.format"
         static let hotkeyTrigger = "hotkey.binding"
+        static let styleLearning = "learning.styleEnabled"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
             correctionEnabled, correctionRetention, ollamaModel, lineFormat, hotkeyTrigger,
+            styleLearning,
         ]
     }
 
@@ -61,6 +63,7 @@ final class Preferences {
             Key.correctionRetention: 0.75,
             Key.ollamaModel: OllamaCorrector.defaultModel,
             Key.lineFormat: MovieLineFormat.repliqueEtFilm.rawValue,
+            Key.styleLearning: true,
         ])
     }
 
@@ -92,6 +95,12 @@ final class Preferences {
     var correctionEnabled: Bool {
         get { access(keyPath: \.correctionEnabled); return defaults.bool(forKey: Key.correctionEnabled) }
         set { withMutation(keyPath: \.correctionEnabled) { defaults.set(newValue, forKey: Key.correctionEnabled) } }
+    }
+
+    /// Relever les corrections manuelles pour proposer des apprentissages.
+    var styleLearningEnabled: Bool {
+        get { access(keyPath: \.styleLearningEnabled); return defaults.bool(forKey: Key.styleLearning) }
+        set { withMutation(keyPath: \.styleLearningEnabled) { defaults.set(newValue, forKey: Key.styleLearning) } }
     }
 
     /// Part minimale des mots à conserver pour qu'une correction soit acceptée.

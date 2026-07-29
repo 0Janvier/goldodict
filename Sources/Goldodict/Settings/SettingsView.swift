@@ -17,7 +17,7 @@ struct SettingsView: View {
     @State private var section: Section = .dictation
 
     enum Section: String, CaseIterable, Identifiable {
-        case dictation, text, vocabulary, applications, repliques
+        case dictation, text, vocabulary, applications, learning, repliques
 
         var id: String { rawValue }
 
@@ -27,6 +27,7 @@ struct SettingsView: View {
             case .text: return "Texte"
             case .vocabulary: return "Vocabulaire"
             case .applications: return "Applications"
+            case .learning: return "Style appris"
             case .repliques: return "Répliques"
             }
         }
@@ -37,6 +38,7 @@ struct SettingsView: View {
             case .text: return "text.alignleft"
             case .vocabulary: return "character.book.closed"
             case .applications: return "app.badge.checkmark"
+            case .learning: return "sparkles"
             case .repliques: return "film"
             }
         }
@@ -47,6 +49,7 @@ struct SettingsView: View {
             case .text: return "Correction, ponctuation, typographie"
             case .vocabulary: return "Noms propres et abréviations"
             case .applications: return "Un traitement par application"
+            case .learning: return "Corrections répétées, proposées avant d'être apprises"
             case .repliques: return "Ce que dit la pastille"
             }
         }
@@ -82,6 +85,7 @@ struct SettingsView: View {
                 case .text: TextSettings(controller: controller)
                 case .vocabulary: LexiconSettings(controller: controller)
                 case .applications: ProfileSettings(controller: controller)
+                case .learning: StyleLearningSettings(controller: controller)
                 case .repliques: RepliqueSettings(controller: controller)
                 }
             }
@@ -514,8 +518,49 @@ private struct ProfileSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section("Style de correction") {
+                if profile.styleNotes.isEmpty {
+                    Text("Aucune règle. Elles s'apprennent depuis « Style appris », ou s'écrivent ici.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(profile.styleNotes, id: \.self) { note in
+                    HStack {
+                        Text(note).font(.callout)
+                        Spacer()
+                        Button {
+                            var updated = profile
+                            updated.styleNotes.removeAll { $0 == note }
+                            controller.updateProfile(updated)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                HStack {
+                    TextField("Nouvelle règle transmise au correcteur", text: $newStyleNote)
+                        .onSubmit { addStyleNote(to: profile) }
+                    Button("Ajouter") { addStyleNote(to: profile) }
+                        .disabled(newStyleNote.trimmed.isEmpty)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    @State private var newStyleNote = ""
+
+    private func addStyleNote(to profile: AppProfile) {
+        let note = newStyleNote.trimmed
+        guard !note.isEmpty else { return }
+        var updated = profile
+        if !updated.styleNotes.contains(note) {
+            updated.styleNotes.append(note)
+            controller.updateProfile(updated)
+        }
+        newStyleNote = ""
     }
 
     /// Nom affiché par le Finder, quand l'application est installée. Un identifiant
@@ -754,6 +799,66 @@ private struct RepliqueSettings: View {
         for id in selection { book.remove(id: id) }
         controller.updateRepliques(book)
         selection.removeAll()
+    }
+}
+
+// MARK: - Style appris
+
+private struct StyleLearningSettings: View {
+    let controller: DictationController
+
+    private var pending: [StyleObservation] {
+        controller.styleObservationStore.observations.proposals(threshold: 1)
+            .filter { $0.status == .pending }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Relever les corrections manuelles", isOn: Binding(
+                    get: { controller.preferences.styleLearningEnabled },
+                    set: { controller.preferences.styleLearningEnabled = $0 }
+                ))
+                Text("Depuis « Reprendre… » dans le menu, après une dictée. Seules des paires courtes sont conservées, jamais le texte des dictées.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Corrections observées") {
+                if pending.isEmpty {
+                    Text("Rien à examiner. Une correction relevée \(StyleObservations.defaultThreshold) fois devient une proposition dans le menu.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(pending) { observation in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("« \(observation.before) » → « \(observation.after) »")
+                            .font(.callout)
+                        HStack(spacing: 10) {
+                            Text("\(observation.occurrences)× · \(observation.profileName)")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                            Button("Lexique") { controller.acceptStyleProposal(observation, as: .lexicon) }
+                                .controlSize(.small)
+                            Button("Style") { controller.acceptStyleProposal(observation, as: .style) }
+                                .controlSize(.small)
+                            Button("Ignorer") { controller.dismissStyleProposal(observation) }
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+
+            Section {
+                Button("Ouvrir le fichier des observations") {
+                    NSWorkspace.shared.activateFileViewerSelecting([StyleObservationStore.fileURL])
+                }
+                .disabled(!FileManager.default.fileExists(atPath: StyleObservationStore.fileURL.path))
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

@@ -13,7 +13,7 @@ protocol TextCorrector: Sendable {
     /// lente. Sans effet si le modèle est déjà prêt.
     func warmUp() async
 
-    func correct(_ text: String) async throws -> String
+    func correct(_ text: String, styleNotes: [String]) async throws -> String
 }
 
 enum CorrectionError: LocalizedError {
@@ -54,6 +54,13 @@ enum CorrectionPrompt {
 
     Tu réponds uniquement par le texte corrigé, sans préambule ni guillemets.
     """
+
+    /// La consigne de base, complétée des règles apprises du profil courant.
+    static func instructions(styleNotes: [String]) -> String {
+        guard !styleNotes.isEmpty else { return instructions }
+        let rules = styleNotes.map { "- \($0)" }.joined(separator: "\n")
+        return instructions + "\n\nRègles supplémentaires, propres à ce contexte :\n" + rules
+    }
 
     static func prompt(for text: String) -> String {
         "Texte dicté à corriger :\n\n\(text)"
