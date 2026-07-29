@@ -22,6 +22,11 @@ enum AudioCaptureError: LocalizedError {
 /// avec le format natif — passer un format différent fait crasher `AVAudioEngine` —
 /// et un `AVAudioConverter` ramène chaque tampon au format cible.
 ///
+/// Le moteur est recréé à chaque capture. Une instance unique survivant aux
+/// changements de périphérique d'entrée rend un format périmé (l'ancien matériel),
+/// et `installTap` lève alors une exception Objective-C qu'aucun `catch` Swift
+/// n'intercepte : la dictée cesse de démarrer jusqu'au relancement de l'application.
+///
 /// Le format cible est fourni par l'appelant, car les deux moteurs ne demandent pas
 /// la même chose : Whisper veut du 16 kHz mono, Apple impose le format que lui rend
 /// `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)`.
@@ -41,7 +46,7 @@ final class AudioCapture {
     /// Appelé depuis un thread audio temps réel : ne rien y faire de coûteux.
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
-    private let engine = AVAudioEngine()
+    private var engine: AVAudioEngine?
     private var targetFormat = AudioCapture.whisperFormat
 
     private var converter: AVAudioConverter?
@@ -71,6 +76,7 @@ final class AudioCapture {
         meter.reset()
         self.targetFormat = targetFormat
 
+        let engine = AVAudioEngine()
         let input = engine.inputNode
         let nativeFormat = input.outputFormat(forBus: 0)
 
@@ -88,17 +94,20 @@ final class AudioCapture {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
+            self.converter = nil
             throw AudioCaptureError.engineFailed(error.localizedDescription)
         }
+        self.engine = engine
         isRunning = true
     }
 
     /// Arrête la capture et rend l'intégralité des échantillons collectés.
     @discardableResult
     func stop() -> [Float] {
-        guard isRunning else { return accumulator.drain() }
+        guard isRunning, let engine else { return accumulator.drain() }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        self.engine = nil
         converter = nil
         isRunning = false
         return accumulator.drain()
