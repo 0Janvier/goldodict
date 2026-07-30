@@ -8,9 +8,16 @@ import GoldodictCore
 /// JSON à moitié écrit. Le nom du fichier sert de clé d'idempotence côté Goldocab.
 enum OutboxWriter {
 
-    static let defaultOutboxPath = NSString(
-        string: "~/Documents/1_Avocat/90_Systeme/goldocab-mobile/outbox"
-    ).expandingTildeInPath
+    /// Chemin de la boîte d'envoi : surchargable par le réglage
+    /// `goldocab.outboxPath`, sinon l'emplacement du mécanisme compagnon.
+    static var defaultOutboxPath: String {
+        if let custom = UserDefaults.standard.string(forKey: "goldocab.outboxPath"), !custom.isEmpty {
+            return NSString(string: custom).expandingTildeInPath
+        }
+        return NSString(
+            string: "~/Documents/1_Avocat/90_Systeme/goldocab-mobile/outbox"
+        ).expandingTildeInPath
+    }
 
     enum Failure: LocalizedError {
         case outboxMissing

@@ -310,7 +310,7 @@ final class DictationController {
         if let start = payload["start"] as? Double {
             dossierSessionStart = Date(timeIntervalSince1970: start)
         }
-        Log.goldocab.notice("dossier \(dossier.code, privacy: .public) repris après relance (\(Int(self.dossierSessionSeconds)) s en cours)")
+        Log.goldocab.notice("dossier \(dossier.code, privacy: .private) repris après relance (\(Int(self.dossierSessionSeconds)) s en cours)")
     }
 
     /// Temps non imputé des dossiers quittés : un basculement — surtout
@@ -334,7 +334,7 @@ final class DictationController {
         }
 
         if let dossier {
-            Log.goldocab.notice("dossier actif : \(dossier.code, privacy: .public) (\(dossier.terms.count) termes)")
+            Log.goldocab.notice("dossier actif : \(dossier.code, privacy: .private) (\(dossier.terms.count) termes)")
         } else {
             Log.goldocab.notice("aucun dossier actif")
         }
@@ -357,7 +357,7 @@ final class DictationController {
         }
         guard let match, match.id != activeDossier?.id else { return }
         selectDossier(match)
-        Log.goldocab.notice("dossier détecté par la fenêtre : \(match.code, privacy: .public)")
+        Log.goldocab.notice("dossier détecté par la fenêtre : \(match.code, privacy: .private)")
     }
 
     // MARK: - Relecture à la volée
@@ -466,6 +466,9 @@ final class DictationController {
         // et le champ contient encore l'ancien texte tant que la dictée parle.
         Task { @MainActor [weak self] in
             guard let self else { return }
+            // L'utilisateur a pu changer d'application entre l'appui et cette
+            // lecture : on revérifie le premier plan avant de toucher au champ.
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == last.bundleIdentifier else { return }
             guard let field = FocusedFieldReader.focusedFieldValue(),
                   let passage = InsertionLocator.modifiedPassage(of: last.text, in: field) else { return }
             let count = self.submitStyleCorrection(
@@ -608,6 +611,7 @@ final class DictationController {
         repliqueStore.load()
         profileStore.load()
         styleObservationStore.load()
+        ArchitectSession.purgeStaleSessions()
         reloadPipeline()
         restoreRelaunchHandoff()
 

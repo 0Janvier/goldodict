@@ -74,6 +74,27 @@ final class ArchitectSession {
         SupportDirectory.url(for: "ArchitectSessions")
     }
 
+    /// Efface au lancement les snapshots qu'un crash aurait laissés : le fichier
+    /// de reprise n'a de sens que le temps d'une session, pas au-delà de deux
+    /// jours — au nom du principe « rien ne traîne sur disque ».
+    static func purgeStaleSessions(olderThan age: TimeInterval = 48 * 3600) {
+        let manager = FileManager.default
+        guard let files = try? manager.contentsOfDirectory(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+
+        let cutoff = Date().addingTimeInterval(-age)
+        for file in files {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            if modified < cutoff {
+                try? manager.removeItem(at: file)
+                Log.architect.notice("session périmée purgée : \(file.lastPathComponent, privacy: .public)")
+            }
+        }
+    }
+
     // MARK: - Cycle de vie
 
     func start() async {

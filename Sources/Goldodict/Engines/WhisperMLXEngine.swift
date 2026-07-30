@@ -168,8 +168,9 @@ private actor Session {
 /// Enveloppe du processus Python, dialogue en JSON ligne par ligne.
 private final class Daemon {
 
-    /// Interpréteur du venv pipx où mlx-whisper est installé.
-    static let interpreter = "/Users/marc/.local/pipx/venvs/mlx-whisper/bin/python"
+    /// Interpréteur du venv pipx où mlx-whisper est installé, résolu depuis le
+    /// dossier personnel — jamais de chemin d'utilisateur codé en dur.
+    static let interpreter = NSHomeDirectory() + "/.local/pipx/venvs/mlx-whisper/bin/python"
 
     private let process = Process()
     private let input = Pipe()
