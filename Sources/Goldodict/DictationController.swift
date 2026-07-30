@@ -237,6 +237,10 @@ final class DictationController {
     /// même raison : il sert à confirmer où le texte est parti.
     private var activeApplicationName: String?
 
+    /// Identifiant de paquet de la même application : l'observation du champ ne
+    /// relit que dans l'application où le texte est parti.
+    private var activeBundleIdentifier: String?
+
     /// Vocabulaire transmis au moteur avant transcription : le lexique, enrichi
     /// des termes du dossier actif quand il y en a un.
     private var contextualStrings: [String] {
@@ -355,6 +359,47 @@ final class DictationController {
     // MARK: - Style vivant (apprentissage des corrections)
 
     let styleObservationStore = StyleObservationStore()
+
+    /// La dernière insertion réussie, gardée en mémoire seule pour l'observation
+    /// du champ. Consommée à la première tentative — une insertion, une lecture.
+    private struct LastInsertion {
+        let text: String
+        let bundleIdentifier: String?
+        let profileName: String
+        let date: Date
+    }
+
+    private var lastInsertion: LastInsertion?
+    private static let observationWindow: TimeInterval = 15 * 60
+
+    /// Relit le champ de la dernière insertion et relève les retouches, sans
+    /// aucun geste de l'utilisateur. Conditions cumulatives : même application,
+    /// moins de quinze minutes, apprentissage et observation activés. Le champ lu
+    /// ne quitte jamais la mémoire — seules des paires courtes sont comptées.
+    private func observeLastInsertionIfPossible(frontmost: String?) {
+        guard preferences.styleLearningEnabled, preferences.styleObservationAuto,
+              let last = lastInsertion else { return }
+        lastInsertion = nil
+
+        guard last.bundleIdentifier == frontmost,
+              Date().timeIntervalSince(last.date) < Self.observationWindow else { return }
+
+        // Hors du chemin critique : la capture démarre sans attendre la lecture,
+        // et le champ contient encore l'ancien texte tant que la dictée parle.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let field = FocusedFieldReader.focusedFieldValue(),
+                  let passage = InsertionLocator.modifiedPassage(of: last.text, in: field) else { return }
+            let count = self.submitStyleCorrection(
+                original: last.text,
+                corrected: passage,
+                profileName: last.profileName
+            )
+            if count > 0 {
+                Log.learning.notice("observation du champ : \(count) correction(s) relevée(s)")
+            }
+        }
+    }
 
     /// Relève les corrections d'une dictée reprise à la main. Rend le nombre de
     /// paires retenues — zéro n'est pas un échec, juste rien à apprendre.
@@ -620,6 +665,7 @@ final class DictationController {
         let frontmost = application?.bundleIdentifier
         activeProfile = profileStore.profiles.profile(for: frontmost)
         activeApplicationName = application?.localizedName
+        activeBundleIdentifier = frontmost
         Log.lifecycle.notice(
             "profil \(self.activeProfile.name, privacy: .public) pour \(frontmost ?? "application inconnue", privacy: .public)"
         )
@@ -629,6 +675,8 @@ final class DictationController {
         if preferences.dossierAutoDetect {
             autoDetectDossier(for: application)
         }
+
+        observeLastInsertionIfPossible(frontmost: frontmost)
 
         let relay = BufferRelay()
         self.relay = relay
@@ -743,6 +791,12 @@ final class DictationController {
         if outcome != .pasted {
             state = .failed("texte copié, Accessibilité non autorisée")
         } else {
+            lastInsertion = LastInsertion(
+                text: cleaned,
+                bundleIdentifier: activeBundleIdentifier,
+                profileName: profile.name,
+                date: Date()
+            )
             // Le compte de signes et le nom de l'application confirment que la dictée
             // est arrivée là où elle était attendue. La note, quand il y en a une,
             // signale ce qui n'a pas pu être fait sans présenter cela comme une panne.

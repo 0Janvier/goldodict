@@ -819,7 +819,12 @@ private struct StyleLearningSettings: View {
                     get: { controller.preferences.styleLearningEnabled },
                     set: { controller.preferences.styleLearningEnabled = $0 }
                 ))
-                Text("Depuis « Reprendre… » dans le menu, après une dictée. Seules des paires courtes sont conservées, jamais le texte des dictées.")
+                Toggle("Relire le champ après un collage", isOn: Binding(
+                    get: { controller.preferences.styleObservationAuto },
+                    set: { controller.preferences.styleObservationAuto = $0 }
+                ))
+                .disabled(!controller.preferences.styleLearningEnabled)
+                Text("Depuis « Reprendre… » dans le menu, ou automatiquement au départ de la dictée suivante dans la même application. Seules des paires courtes sont conservées, jamais le texte des dictées ni le contenu du champ.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
