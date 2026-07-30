@@ -6,7 +6,7 @@ Dictée vocale pour macOS. Un raccourci, vous parlez, le texte arrive dans l'app
 
 **Elle apprend de vos corrections.** Votre cliente s'appelle Ripley ; tout moteur français écrira « replier », aussi sûrement qu'il ouvrira le sas. Corrigez la dictée dans la fenêtre de relecture, et quand la même correction revient trois fois, l'application propose de la retenir — entrée de lexique pour un nom, règle de style transmise au correcteur pour une tournure. Rien ne s'apprend en silence, tout se refuse d'une touche, et le registre des corrections est un fichier JSON lisible qui ne contient jamais vos textes.
 
-*[Télécharger le DMG signé](https://github.com/0Janvier/goldodict/releases/latest) — © 2026 Marc Sztulman.*
+*[Télécharger le DMG signé](https://github.com/0Janvier/goldodict/releases/latest) — © 2026 Marc Sztulman, licence [MIT](LICENSE).*
 
 ## Usage
 
