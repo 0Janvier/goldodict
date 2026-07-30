@@ -30,12 +30,14 @@ final class Preferences {
         static let lineFormat = "repliques.format"
         static let hotkeyTrigger = "hotkey.binding"
         static let styleLearning = "learning.styleEnabled"
+        static let styleObservationAuto = "learning.observeFieldAuto"
+        static let dossierAutoDetect = "goldocab.autoDetect"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
             correctionEnabled, correctionRetention, ollamaModel, lineFormat, hotkeyTrigger,
-            styleLearning,
+            styleLearning, styleObservationAuto, dossierAutoDetect,
         ]
     }
 
@@ -64,6 +66,8 @@ final class Preferences {
             Key.ollamaModel: OllamaCorrector.defaultModel,
             Key.lineFormat: MovieLineFormat.repliqueEtFilm.rawValue,
             Key.styleLearning: true,
+            Key.styleObservationAuto: true,
+            Key.dossierAutoDetect: true,
         ])
     }
 
@@ -101,6 +105,19 @@ final class Preferences {
     var styleLearningEnabled: Bool {
         get { access(keyPath: \.styleLearningEnabled); return defaults.bool(forKey: Key.styleLearning) }
         set { withMutation(keyPath: \.styleLearningEnabled) { defaults.set(newValue, forKey: Key.styleLearning) } }
+    }
+
+    /// Relire le champ de la dernière insertion au début de la dictée suivante,
+    /// pour relever les retouches sans passer par la fenêtre de reprise.
+    var styleObservationAuto: Bool {
+        get { access(keyPath: \.styleObservationAuto); return defaults.bool(forKey: Key.styleObservationAuto) }
+        set { withMutation(keyPath: \.styleObservationAuto) { defaults.set(newValue, forKey: Key.styleObservationAuto) } }
+    }
+
+    /// Basculer sur le dossier dont le code figure dans le titre de la fenêtre visée.
+    var dossierAutoDetect: Bool {
+        get { access(keyPath: \.dossierAutoDetect); return defaults.bool(forKey: Key.dossierAutoDetect) }
+        set { withMutation(keyPath: \.dossierAutoDetect) { defaults.set(newValue, forKey: Key.dossierAutoDetect) } }
     }
 
     /// Part minimale des mots à conserver pour qu'une correction soit acceptée.

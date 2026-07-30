@@ -281,6 +281,16 @@ struct MenuPanel: View {
                 }
                 .labelsHidden()
 
+                Toggle(isOn: Binding(
+                    get: { controller.preferences.dossierAutoDetect },
+                    set: { controller.preferences.dossierAutoDetect = $0 }
+                )) {
+                    Text("Suivre le document au premier plan")
+                        .font(.system(size: 11))
+                }
+                .toggleStyle(.checkbox)
+                .help("Bascule sur le dossier dont le code (26-XXX) figure dans le titre de la fenêtre")
+
                 if let active = controller.activeDossier {
                     HStack(spacing: 6) {
                         Image(systemName: "text.book.closed")

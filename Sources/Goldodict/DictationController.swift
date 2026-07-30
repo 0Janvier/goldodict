@@ -305,16 +305,51 @@ final class DictationController {
         Log.goldocab.notice("dossier \(dossier.code, privacy: .public) repris après relance (\(Int(self.dossierSessionSeconds)) s en cours)")
     }
 
+    /// Temps non imputé des dossiers quittés : un basculement — surtout
+    /// automatique — ne doit jamais effacer des minutes à facturer. Le compteur
+    /// se range ici et revient quand le dossier redevient actif.
+    private var parkedSessions: [Int64: (seconds: TimeInterval, start: Date?)] = [:]
+
     func selectDossier(_ dossier: DossierContext?) {
         guard dossier?.id != activeDossier?.id else { return }
+
+        if let previous = activeDossier, dossierSessionSeconds > 0 {
+            parkedSessions[previous.id] = (dossierSessionSeconds, dossierSessionStart)
+        }
         activeDossier = dossier
-        dossierSessionSeconds = 0
-        dossierSessionStart = nil
+        if let dossier, let parked = parkedSessions.removeValue(forKey: dossier.id) {
+            dossierSessionSeconds = parked.seconds
+            dossierSessionStart = parked.start
+        } else {
+            dossierSessionSeconds = 0
+            dossierSessionStart = nil
+        }
+
         if let dossier {
             Log.goldocab.notice("dossier actif : \(dossier.code, privacy: .public) (\(dossier.terms.count) termes)")
         } else {
             Log.goldocab.notice("aucun dossier actif")
         }
+    }
+
+    /// Cherche un code de dossier dans le titre de la fenêtre visée et bascule
+    /// dessus. Silencieux par construction : pas de titre, pas de code, pas de
+    /// correspondance — la dictée part telle quelle.
+    private func autoDetectDossier(for application: NSRunningApplication?) {
+        guard let title = WindowTitleReader.focusedWindowTitle(of: application) else { return }
+        if availableDossiers.isEmpty {
+            availableDossiers = goldocabReader.activeDossiers()
+        }
+        var match = DossierCodeDetector.match(in: title, among: availableDossiers)
+        if match == nil, !DossierCodeDetector.codes(in: title).isEmpty {
+            // Un code est là mais absent de la liste : elle date peut-être d'avant
+            // l'ouverture du dossier dans Goldocab.
+            availableDossiers = goldocabReader.activeDossiers()
+            match = DossierCodeDetector.match(in: title, among: availableDossiers)
+        }
+        guard let match, match.id != activeDossier?.id else { return }
+        selectDossier(match)
+        Log.goldocab.notice("dossier détecté par la fenêtre : \(match.code, privacy: .public)")
     }
 
     // MARK: - Style vivant (apprentissage des corrections)
@@ -588,6 +623,12 @@ final class DictationController {
         Log.lifecycle.notice(
             "profil \(self.activeProfile.name, privacy: .public) pour \(frontmost ?? "application inconnue", privacy: .public)"
         )
+
+        // Avant le gel du vocabulaire : le dossier détecté doit nourrir cette
+        // dictée-ci, pas la suivante.
+        if preferences.dossierAutoDetect {
+            autoDetectDossier(for: application)
+        }
 
         let relay = BufferRelay()
         self.relay = relay
