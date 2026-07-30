@@ -32,12 +32,13 @@ final class Preferences {
         static let styleLearning = "learning.styleEnabled"
         static let styleObservationAuto = "learning.observeFieldAuto"
         static let dossierAutoDetect = "goldocab.autoDetect"
+        static let reviewBeforePaste = "output.reviewBeforePaste"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
             correctionEnabled, correctionRetention, ollamaModel, lineFormat, hotkeyTrigger,
-            styleLearning, styleObservationAuto, dossierAutoDetect,
+            styleLearning, styleObservationAuto, dossierAutoDetect, reviewBeforePaste,
         ]
     }
 
@@ -68,6 +69,7 @@ final class Preferences {
             Key.styleLearning: true,
             Key.styleObservationAuto: true,
             Key.dossierAutoDetect: true,
+            Key.reviewBeforePaste: true,
         ])
     }
 
@@ -118,6 +120,12 @@ final class Preferences {
     var dossierAutoDetect: Bool {
         get { access(keyPath: \.dossierAutoDetect); return defaults.bool(forKey: Key.dossierAutoDetect) }
         set { withMutation(keyPath: \.dossierAutoDetect) { defaults.set(newValue, forKey: Key.dossierAutoDetect) } }
+    }
+
+    /// Montrer la dictée dans la fenêtre de relecture avant de la coller.
+    var reviewBeforePaste: Bool {
+        get { access(keyPath: \.reviewBeforePaste); return defaults.bool(forKey: Key.reviewBeforePaste) }
+        set { withMutation(keyPath: \.reviewBeforePaste) { defaults.set(newValue, forKey: Key.reviewBeforePaste) } }
     }
 
     /// Part minimale des mots à conserver pour qu'une correction soit acceptée.

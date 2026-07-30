@@ -241,6 +241,10 @@ final class DictationController {
     /// relit que dans l'application où le texte est parti.
     private var activeBundleIdentifier: String?
 
+    /// L'application elle-même, pour lui rendre le premier plan après une
+    /// relecture — la fenêtre flottante l'aura pris pour être éditable.
+    private var activeApplication: NSRunningApplication?
+
     /// Vocabulaire transmis au moteur avant transcription : le lexique, enrichi
     /// des termes du dossier actif quand il y en a un.
     private var contextualStrings: [String] {
@@ -354,6 +358,80 @@ final class DictationController {
         guard let match, match.id != activeDossier?.id else { return }
         selectDossier(match)
         Log.goldocab.notice("dossier détecté par la fenêtre : \(match.code, privacy: .public)")
+    }
+
+    // MARK: - Relecture à la volée
+
+    /// Le texte prêt et son contexte, remis à la fenêtre de relecture.
+    struct ReviewRequest {
+        let text: String
+        let profileName: String
+        let note: String?
+        let application: NSRunningApplication?
+        let applicationName: String?
+        let bundleIdentifier: String?
+    }
+
+    /// Présente la fenêtre de relecture. Câblé par l'AppDelegate, comme les
+    /// autres fenêtres ; s'il manque, le collage direct reprend ses droits.
+    @ObservationIgnored
+    var presentReview: ((ReviewRequest) -> Void)?
+
+    /// Entrée : appliquer l'éventuelle retouche à l'apprentissage, rendre le
+    /// premier plan à l'application d'origine, coller.
+    func completeReview(_ request: ReviewRequest, edited: String) {
+        let text = edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? request.text
+            : edited
+
+        if text != request.text {
+            let learned = submitStyleCorrection(
+                original: request.text,
+                corrected: text,
+                profileName: request.profileName
+            )
+            if learned > 0 {
+                Log.learning.notice("relecture : \(learned) correction(s) relevée(s)")
+            }
+        }
+
+        request.application?.activate()
+        Task { [weak self] in
+            // Le même délai que la dictée lancée depuis le menu : sans lui, le
+            // collage partirait avant que la bascule d'application n'aboutisse.
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self else { return }
+            self.state = .injecting
+            let outcome = await TextInjector.inject(
+                text,
+                autoPaste: self.preferences.autoPaste,
+                restorePasteboard: self.preferences.restorePasteboard
+            )
+            self.record(transcript: text, profileName: request.profileName)
+            if outcome != .pasted {
+                self.state = .failed("texte copié, Accessibilité non autorisée")
+            } else {
+                self.lastInsertion = LastInsertion(
+                    text: text,
+                    bundleIdentifier: request.bundleIdentifier,
+                    profileName: request.profileName,
+                    date: Date()
+                )
+                self.state = .inserted(Insertion(
+                    characters: text.count,
+                    application: request.applicationName,
+                    note: request.note
+                ))
+            }
+        }
+    }
+
+    /// Échap ou fermeture : rien n'est collé, mais la dictée reste à
+    /// l'historique — elle se récupère par « Reprendre… » ou la copie manuelle.
+    func cancelReview(_ request: ReviewRequest) {
+        record(transcript: request.text, profileName: request.profileName)
+        state = .idle
+        Log.learning.debug("relecture annulée")
     }
 
     // MARK: - Style vivant (apprentissage des corrections)
@@ -666,6 +744,7 @@ final class DictationController {
         activeProfile = profileStore.profiles.profile(for: frontmost)
         activeApplicationName = application?.localizedName
         activeBundleIdentifier = frontmost
+        activeApplication = application
         Log.lifecycle.notice(
             "profil \(self.activeProfile.name, privacy: .public) pour \(frontmost ?? "application inconnue", privacy: .public)"
         )
@@ -777,6 +856,21 @@ final class DictationController {
         let cleaned = pipeline.finalize(corrected, profile: profile)
         guard !cleaned.isEmpty else {
             state = .idle
+            return
+        }
+
+        // Relecture à la volée : le texte s'arrête dans la fenêtre flottante,
+        // le collage attendra la touche Entrée.
+        if preferences.reviewBeforePaste, let presentReview {
+            state = .idle
+            presentReview(ReviewRequest(
+                text: cleaned,
+                profileName: profile.name,
+                note: note,
+                application: activeApplication,
+                applicationName: activeApplicationName,
+                bundleIdentifier: activeBundleIdentifier
+            ))
             return
         }
 

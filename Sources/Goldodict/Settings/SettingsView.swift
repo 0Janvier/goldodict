@@ -225,6 +225,10 @@ private struct DictationSettings: View {
             }
 
             Section("Insertion") {
+                Toggle("Relire avant de coller (fenêtre flottante, ⏎ pour coller)", isOn: Binding(
+                    get: { controller.preferences.reviewBeforePaste },
+                    set: { controller.preferences.reviewBeforePaste = $0 }
+                ))
                 Toggle("Coller automatiquement dans l'application active", isOn: autoPasteBinding)
                 Toggle("Restaurer le presse-papiers après collage", isOn: restoreBinding)
                 Text("Sans collage automatique, le texte dicté reste dans le presse-papiers et se colle par ⌘V.")

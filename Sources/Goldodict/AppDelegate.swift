@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var importWindow = AudioImportWindowController(controller: controller)
     private lazy var architectWindow = ArchitectWindowController(controller: controller)
     private lazy var styleReviewWindow = StyleReviewWindowController(controller: controller)
+    private lazy var quickReviewWindow = QuickReviewWindowController(controller: controller)
     private var menuBar: MenuBarController?
     private var speechWatchdog: SpeechServiceWatchdog?
 
@@ -31,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openArchitect: { [weak self] in self?.architectWindow.open() },
             reviewDictation: { [weak self] dictation in self?.styleReviewWindow.review(dictation) }
         )
+
+        controller.presentReview = { [weak self] request in
+            self?.quickReviewWindow.present(request)
+        }
 
         controller.activate()
 
