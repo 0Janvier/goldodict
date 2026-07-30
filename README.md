@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="design/goldodict-icon.svg" width="128" alt="Icône de Goldodict">
+</p>
+
 # Goldodict
 
 Dictée vocale pour macOS. Un raccourci, vous parlez, le texte arrive dans l'application où vous étiez — ponctué, accentué, corrigé. Deux partis pris la distinguent des dictées en ligne.
