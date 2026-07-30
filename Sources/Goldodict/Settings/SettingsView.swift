@@ -76,6 +76,9 @@ struct SettingsView: View {
 
                 Divider()
                 StatusPanel(controller: controller) { section = .text }
+
+                Divider()
+                AboutFooter()
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 210, max: 210)
         } detail: {
@@ -92,6 +95,34 @@ struct SettingsView: View {
             .navigationTitle(section.title)
         }
         .frame(width: 760, height: 560)
+    }
+}
+
+// MARK: - À propos
+
+/// Signature de l'application, au pied de la barre latérale des réglages.
+private struct AboutFooter: View {
+
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Goldodict \(version)")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("© 2026 Marc Sztulman")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            Link("github.com/0Janvier/goldodict",
+                 destination: URL(string: "https://github.com/0Janvier/goldodict")!)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
