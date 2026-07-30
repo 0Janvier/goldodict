@@ -1,8 +1,12 @@
 # Goldodict
 
-Dictée vocale **entièrement locale** pour macOS. Le texte dicté arrive dans le presse-papiers et se colle automatiquement dans l'application active, quelle qu'elle soit.
+Dictée vocale pour macOS. Un raccourci, vous parlez, le texte arrive dans l'application où vous étiez — ponctué, accentué, corrigé. Deux partis pris la distinguent des dictées en ligne.
 
-Rien ne quitte l'ordinateur : ni l'audio, ni la transcription. Aucun fichier n'est conservé, l'historique des vingt dernières dictées reste en mémoire vive et disparaît à la fermeture.
+**Tout se passe sur la machine.** Transcription (Whisper MLX ou Apple), correction par modèle de langue, relecture : aucun octet ne sort de l'ordinateur. L'audio n'est jamais conservé, la transcription ne touche pas le disque, l'historique vit en mémoire et disparaît à la fermeture. La dictée reste utilisable là où les services en ligne sont exclus — chez un avocat, par exemple.
+
+**Elle apprend de vos corrections.** L'auteur s'appelle Sztulman ; aucun moteur généraliste ne l'écrit juste du premier coup. Corrigez la dictée dans la fenêtre de relecture, et quand la même correction revient trois fois, l'application propose de la retenir — entrée de lexique pour un nom, règle de style transmise au correcteur pour une tournure. Rien ne s'apprend en silence, tout se refuse d'une touche, et le registre des corrections est un fichier JSON lisible qui ne contient jamais vos textes.
+
+*[Télécharger le DMG signé](https://github.com/0Janvier/goldodict/releases/latest) — © 2026 Marc Sztulman.*
 
 ## Usage
 
@@ -34,6 +38,28 @@ Un modificateur seul reste utilisable comme modificateur : frapper une autre tou
 **Importer un fichier audio.** Le bouton *Importer un fichier audio…* du panneau ouvre un sélecteur de fichier, ou glissez-déposez directement un fichier audio sur l'icône de la barre des menus. Le moteur actuellement choisi transcrit le fichier — Apple ou Whisper, jamais un moteur imposé — et une fenêtre affiche le texte obtenu avec deux boutons, *Copier* et *Coller*. Rien ne s'insère automatiquement, contrairement à une dictée live. Refusé pendant une dictée en cours, le moteur ne tenant qu'une session à la fois.
 
 > L'icône de la barre des menus disparaît derrière le chevron `‹` quand la barre est chargée. Pour l'en sortir, maintenez ⌘ et faites-la glisser vers la gauche. Au premier lancement, une fenêtre d'accueil demande les trois autorisations une à une, propose le choix du moteur et offre un champ d'essai.
+
+## Relecture à la volée
+
+La dictée transcrite s'affiche d'abord dans une petite fenêtre flottante, corrigeable au clavier. **⏎** rend le premier plan à l'application d'origine et colle ; **⇧⏎** insère un retour à la ligne ; **⎋** annule sans coller, le texte restant à l'historique du menu. Toute retouche faite avant ⏎ alimente l'apprentissage.
+
+Le collage immédiat d'origine se retrouve en décochant *Relire avant de coller* dans les réglages.
+
+## L'apprentissage des corrections
+
+Trois canaux nourrissent le même moteur, du plus direct au plus discret :
+
+1. **La fenêtre de relecture**, à chaque dictée.
+2. **« Reprendre… »** dans le panneau du menu, pour corriger la dernière dictée après coup.
+3. **L'observation du champ** : au départ de la dictée suivante dans la même application, le champ est relu par l'Accessibilité et les retouches faites entre-temps sont relevées. Le contenu du champ ne quitte jamais la mémoire.
+
+Le diff ne retient que les substitutions courtes — quatre mots au plus. Une réécriture est un changement d'avis, pas une correction, elle est ignorée. À la troisième occurrence d'une même correction, une carte *Style appris* apparaît dans le menu : **⏎** adopte (lexique ou règle de style du profil, au choix dans les réglages), **⎋** écarte définitivement. Registre : `~/Library/Application Support/Goldodict/style-observations.json`, paires courtes uniquement.
+
+## Mode document
+
+*Dicter un document long…* dans le menu ouvre une fenêtre dédiée pour dicter vingt ou trente minutes d'affilée. Les articulations s'énoncent à la voix — « titre un, sur la recevabilité », « grand A », « petit un », « citation » / « fin de citation », « nouvel alinéa » — et le plan I. / A. / 1. se construit à l'écran pendant que vous parlez. Les mots de commande sont interprétés de façon déterministe, jamais soumis au modèle de langue.
+
+À la fin, export **DOCX** (Garamond 12, français) prêt à reprendre dans Word. Le plan en cours est écrit sur disque au fil de la dictée — un plantage à la minute dix-huit ne perd que le segment en cours — puis effacé à l'export ou à la fermeture.
 
 ## Moteurs de transcription
 
@@ -100,6 +126,10 @@ Le lexique livré couvre les juridictions, les codes et sigles du droit public e
 Les marques simples sont désactivables dans les réglages : en droit, « le point de départ du délai » ne doit pas devenir une ponctuation.
 
 ## Installation
+
+**Par le DMG** — [dernière release](https://github.com/0Janvier/goldodict/releases/latest), glisser Goldodict dans Applications.
+
+**Depuis les sources** :
 
 ```bash
 ./scripts/make_app.sh
