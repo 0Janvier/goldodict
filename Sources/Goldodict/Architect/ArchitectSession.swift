@@ -34,6 +34,14 @@ final class ArchitectSession {
 
     var level: Float { capture?.level ?? 0 }
 
+    /// Plus rien n'est capté depuis assez longtemps pour que ce ne soit plus une
+    /// pause. La pastille le disait déjà, pas cette fenêtre : on pouvait dicter
+    /// vingt minutes devant un vumètre à plat sans qu'un mot le signale.
+    private(set) var isSilent = false
+
+    /// Périphérique écouté au moment où le silence a été déclaré.
+    private(set) var inputDeviceName: String?
+
     private let engine: WhisperMLXEngine
     private let corrector: CorrectionService
     private let pipeline: TranscriptPipeline
@@ -47,6 +55,8 @@ final class ArchitectSession {
     private let collector = SegmentCollector()
     private var pendingSegments: [[AVAudioPCMBuffer]] = []
     private var processing: Task<Void, Never>?
+    private var watch = SilenceWatch()
+    private var watching: Task<Void, Never>?
 
     private let sessionID = UUID()
 
@@ -121,6 +131,7 @@ final class ArchitectSession {
             self.capture = capture
             if startedAt == nil { startedAt = Date() }
             phase = .recording
+            startWatching()
             Log.architect.notice("session document démarrée")
         } catch {
             phase = .failed(error.localizedDescription)
@@ -164,6 +175,45 @@ final class ArchitectSession {
         capture?.stop()
         capture?.onBuffer = nil
         capture = nil
+        stopWatching()
+    }
+
+    // MARK: - Surveillance du silence
+
+    /// Relève le niveau à la cadence du vumètre du panneau, pour que l'avertissement
+    /// et les barres racontent la même chose au même instant.
+    ///
+    /// Le relevé ne se fait pas dans `onBuffer` : ce rappel tourne sur le thread
+    /// audio temps réel, où lire une propriété CoreAudio se paierait en craquements.
+    private func startWatching() {
+        guard watching == nil else { return }
+        watch.begin(at: ProcessInfo.processInfo.systemUptime)
+        isSilent = false
+        inputDeviceName = nil
+
+        watching = Task { [weak self] in
+            var smoothed: Float = 0
+            while !Task.isCancelled {
+                guard let self else { return }
+                smoothed = AudioLevel.smoothed(
+                    previous: smoothed,
+                    target: AudioLevel.normalized(rms: self.level)
+                )
+                if self.watch.absorb(level: smoothed, at: ProcessInfo.processInfo.systemUptime) {
+                    self.inputDeviceName = AudioDevices.defaultInputName
+                    Log.architect.notice("plus rien n'est capté depuis le périphérique d'entrée")
+                }
+                self.isSilent = self.watch.isSilent
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+        }
+    }
+
+    private func stopWatching() {
+        watching?.cancel()
+        watching = nil
+        isSilent = false
+        inputDeviceName = nil
     }
 
     // MARK: - Segments
