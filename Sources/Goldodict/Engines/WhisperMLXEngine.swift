@@ -80,6 +80,7 @@ private actor Session {
     private static let silenceThreshold: Float = 0.01
 
     private var samples: [Float] = []
+    private var rejectedBuffers = 0
     private var prompt: String?
     private var language = "fr"
     private var model: String
@@ -91,13 +92,26 @@ private actor Session {
 
     func begin(locale: Locale, contextualStrings: [String], model: String) {
         samples.removeAll(keepingCapacity: true)
+        rejectedBuffers = 0
         self.model = model
         language = locale.language.languageCode?.identifier ?? "fr"
         prompt = contextualStrings.isEmpty ? nil : contextualStrings.joined(separator: ", ")
     }
 
     func accumulate(_ buffer: AVAudioPCMBuffer) {
-        guard let channel = buffer.floatChannelData?[0] else { return }
+        // Un tampon d'un autre format que le mono virgule flottante n'a pas de
+        // `floatChannelData`. Le jeter sans rien dire donnait une dictée entière
+        // rendue vide, sans une ligne pour relier la cause à l'effet : c'est
+        // exactement ce que produisait un format d'un autre moteur.
+        guard let channel = buffer.floatChannelData?[0] else {
+            rejectedBuffers += 1
+            if rejectedBuffers == 1 {
+                Log.engine.error(
+                    "tampon écarté, format \(buffer.format, privacy: .public) au lieu de mono virgule flottante"
+                )
+            }
+            return
+        }
         samples.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
     }
 
