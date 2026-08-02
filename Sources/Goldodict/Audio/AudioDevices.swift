@@ -23,6 +23,17 @@ enum AudioDevices {
         return name(of: device)
     }
 
+    /// Où l'on change de périphérique. La pastille et la fenêtre du mode document
+    /// disent la même chose, et il n'y a qu'un endroit à corriger le jour où Apple
+    /// renomme encore ce panneau.
+    static let settingsHint = "Réglages Système > Son > Entrée"
+
+    /// Constat rendu à l'utilisateur quand plus rien n'est capté.
+    static func silenceMessage(device: String?) -> String {
+        guard let device else { return "Rien n'est capté" }
+        return "Rien n'est capté depuis « \(device) »"
+    }
+
     private static func defaultInputDevice() -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,

@@ -274,10 +274,12 @@ private struct OverlayView: View {
     /// Nommer le périphérique change la nature du message. « Rien n'est capté » se
     /// lit comme une panne de micro et envoie chercher du mauvais côté ; le même
     /// message suivi de « BlackHole 2ch » désigne le coupable, et la seconde ligne
-    /// dit où le remplacer. Le nom peut manquer, la forme courte reste vraie.
+    /// dit où le remplacer. Le nom peut manquer, l'indication reste utile.
     private var silenceTitle: String {
-        guard let device = model.inputDeviceName else { return "Rien n'est capté" }
-        return "Rien n'est capté depuis « \(device) »\nRéglages Système > Son > Entrée"
+        """
+        \(AudioDevices.silenceMessage(device: model.inputDeviceName))
+        \(AudioDevices.settingsHint)
+        """
     }
 
     private var tint: Color {
