@@ -139,6 +139,10 @@ private final class OverlayModel {
     private(set) var elapsed: TimeInterval = 0
     private(set) var isSilent = false
 
+    /// Périphérique écouté au moment où le silence a été déclaré. Relevé sur le
+    /// front, pas à l'affichage : la capsule se redessine vingt fois par seconde.
+    private(set) var inputDeviceName: String?
+
     private var startedAt: TimeInterval = 0
     private var smoothed: Float = 0
     private var watch = SilenceWatch()
@@ -149,6 +153,7 @@ private final class OverlayModel {
         elapsed = 0
         smoothed = 0
         isSilent = false
+        inputDeviceName = nil
         watch.begin(at: now)
         bars = Array(repeating: 0, count: Self.barCount)
     }
@@ -162,7 +167,9 @@ private final class OverlayModel {
         bars.removeFirst()
         bars.append(smoothed)
 
-        watch.absorb(level: smoothed, at: now)
+        if watch.absorb(level: smoothed, at: now) {
+            inputDeviceName = AudioDevices.defaultInputName
+        }
         isSilent = watch.isSilent
     }
 
@@ -171,6 +178,7 @@ private final class OverlayModel {
         elapsed = 0
         smoothed = 0
         isSilent = false
+        inputDeviceName = nil
     }
 }
 
@@ -255,12 +263,21 @@ private struct OverlayView: View {
     /// s'affiche que pendant l'enregistrement — les états suivants rendent compte
     /// d'un travail en cours et doivent rester factuels.
     private var title: String {
-        if model.state.isRecording, model.isSilent { return "Rien n'est capté" }
+        if model.state.isRecording, model.isSilent { return silenceTitle }
         if model.state.isRecording, let quote = model.quote, !quote.isEmpty { return quote }
         if case .inserted(let insertion) = model.state, insertion.note == nil {
             return "\(insertion.summary) inséré"
         }
         return model.state.pillTitle
+    }
+
+    /// Nommer le périphérique change la nature du message. « Rien n'est capté » se
+    /// lit comme une panne de micro et envoie chercher du mauvais côté ; le même
+    /// message suivi de « BlackHole 2ch » désigne le coupable, et la seconde ligne
+    /// dit où le remplacer. Le nom peut manquer, la forme courte reste vraie.
+    private var silenceTitle: String {
+        guard let device = model.inputDeviceName else { return "Rien n'est capté" }
+        return "Rien n'est capté depuis « \(device) »\nRéglages Système > Son > Entrée"
     }
 
     private var tint: Color {
