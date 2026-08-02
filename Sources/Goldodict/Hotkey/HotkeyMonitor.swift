@@ -16,7 +16,13 @@ import GoldodictCore
 final class HotkeyMonitor {
 
     /// Appelé sur la boucle principale à chaque enfoncement (`true`) et relâchement (`false`).
-    var onEvent: ((Bool) -> Void)?
+    /// Geste du raccourci, avec **l'instant où il s'est produit**.
+    ///
+    /// L'instant voyage avec l'événement plutôt que d'être relevé à l'arrivée : le
+    /// destinataire est prévenu de façon différée, et sans cela le délai de remise
+    /// s'ajouterait à la durée d'appui mesurée. Un tapotement bref passerait alors
+    /// pour un appui maintenu.
+    var onEvent: ((Bool, TimeInterval) -> Void)?
 
     private(set) var trigger: HotkeyTrigger?
     private(set) var isArmed = false
@@ -209,9 +215,19 @@ final class HotkeyMonitor {
     private func emit(isDown: Bool) {
         guard isDown != isEngaged else { return }
         isEngaged = isDown
+
+        // Horloge monotone, relevée ici : c'est le seul endroit qui coïncide avec
+        // l'événement, la suite étant différée.
+        let at = ProcessInfo.processInfo.systemUptime
         Log.hotkey.debug("événement \(isDown ? "enfoncé" : "relâché", privacy: .public)")
-        // Le rappel du tap s'exécute sur la boucle principale, où il a été ajouté.
-        onEvent?(isDown)
+
+        // Le rappel du tap s'exécute sur la boucle principale, et doit lui rendre la
+        // main immédiatement : macOS désarme un tap dont le rappel dépasse son budget
+        // de temps, et les événements de cette fenêtre sont perdus. Le traitement,
+        // lui, ouvre le micro et lit l'Accessibilité, ce qui se compte en centaines
+        // de millisecondes. Il est donc remis au tour de boucle suivant.
+        let handler = onEvent
+        DispatchQueue.main.async { handler?(isDown, at) }
     }
 
     deinit {
