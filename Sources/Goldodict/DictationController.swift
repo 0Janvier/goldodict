@@ -576,6 +576,13 @@ final class DictationController {
 
     private var relay: BufferRelay?
 
+    /// Ouverture du moteur en cours, rendant `true` si la session a bien démarré.
+    ///
+    /// La capture commence sans l'attendre, pour ne pas perdre le début de la phrase,
+    /// mais la fin de dictée, elle, doit l'attendre : finaliser un moteur qui n'a pas
+    /// encore ouvert sa session lève `notStarted` et perd tout ce qui a été dit.
+    private var opening: Task<Bool, Never>?
+
     /// Format réclamé par le moteur, interrogé une seule fois puis conservé : le
     /// résoudre à chaque dictée retarderait le démarrage de la capture.
     private var audioFormat: AVAudioFormat?
@@ -793,7 +800,7 @@ final class DictationController {
         // celle de savoir si l'on est entendu. Le moteur continue de le produire, il
         // sert au démarrage de la reconnaissance.
         let onPartial: @Sendable (String) -> Void = { _ in }
-        Task { [weak self] in
+        opening = Task { [weak self] in
             do {
                 try await engine.start(
                     locale: locale,
@@ -802,9 +809,11 @@ final class DictationController {
                 )
                 Log.engine.notice("moteur ouvert")
                 relay.attach(to: engine)
+                return true
             } catch {
                 Log.engine.error("ouverture du moteur : \(error.localizedDescription, privacy: .public)")
                 await self?.abortCapture(reason: error.localizedDescription)
+                return false
             }
         }
     }
@@ -823,9 +832,21 @@ final class DictationController {
 
         let engine = self.engine
         let relay = self.relay
+        let opening = self.opening
         self.relay = nil
+        self.opening = nil
 
         Task { [weak self] in
+            // Une dictée peut se terminer avant que le moteur ait fini d'ouvrir sa
+            // session : l'ouverture est asynchrone et prend d'ordinaire une dizaine
+            // de millisecondes, mais soixante-dix quand le service traîne. Finaliser
+            // sans l'attendre lève `notStarted` et perd la dictée. Attendre ne coûte
+            // rien, le relais conserve les tampons produits pendant ce temps.
+            //
+            // Une ouverture ratée a déjà été signalée par `abortCapture` et n'a
+            // laissé aucune session : il n'y a plus rien à finaliser.
+            guard await opening?.value ?? true else { return }
+
             await relay?.drain()
             Log.engine.debug("relais vidé, finalisation du moteur")
             do {
