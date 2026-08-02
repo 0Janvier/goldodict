@@ -139,6 +139,20 @@ final class AudioCapture {
         return engine
     }
 
+    /// Instancie l'unité d'entrée sans ouvrir le micro.
+    ///
+    /// Faire survivre le moteur épargne son instanciation à toutes les dictées sauf
+    /// une : la première de la session la paie encore, et c'est justement celle où
+    /// l'utilisateur découvre que rien ne s'enregistre. Le coût est donc payé au
+    /// lancement, à un moment où personne n'attend rien.
+    ///
+    /// Le moteur n'est pas démarré. Le périphérique n'est pas ouvert et le témoin
+    /// d'utilisation du micro ne s'allume pas : seule l'unité est mise en place.
+    func warmUp() {
+        guard engine == nil else { return }
+        _ = reusableEngine().inputNode.outputFormat(forBus: 0)
+    }
+
     private func discardEngine() {
         if let configurationObserver {
             NotificationCenter.default.removeObserver(configurationObserver)
