@@ -388,34 +388,49 @@ private struct TextSettings: View {
             }
 
             Section("Modèles de relecture") {
-                CorrectorRow(
-                    label: "Apple, sur l'appareil",
-                    detail: availability.apple
-                        ? "prêt, utilisé en premier"
-                        : (AppleFoundationCorrector.unavailabilityReason ?? "indisponible"),
-                    ready: availability.apple
-                )
-                CorrectorRow(
-                    label: "Ollama — \(controller.preferences.ollamaModel)",
-                    detail: ollamaDetail,
-                    ready: availability.ollama.isReady
-                )
+                // L'ordre se montre au lieu de se choisir : deux lignes qu'on
+                // déplace disent d'un coup d'œil qui passe devant, là où une liste
+                // déroulante obligeait à la lire pour le savoir.
+                List {
+                    ForEach(Array(order.enumerated()), id: \.element) { index, identifier in
+                        correctorRow(identifier, rank: index + 1)
+                    }
+                    .onMove(perform: reorder)
+                }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .frame(height: 96)
 
-                // Le choix n'apparaît que si le démon répond, et il est peuplé de ce
-                // qu'il sert réellement plutôt que d'un catalogue à jour d'on ne sait
-                // quand. Un seul modèle servi et déjà retenu ne mérite pas de liste.
-                if availability.ollama.served.count > 1 || !availability.ollama.isReady,
-                   !availability.ollama.served.isEmpty {
-                    Picker("Modèle", selection: ollamaModelBinding) {
-                        ForEach(availability.ollama.served, id: \.self) { name in
+                Text("Le numéro 1 est essayé d'abord. Glissez une ligne par sa poignée pour changer l'ordre.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Utiliser \(secondaryName) en secours", isOn: fallbackBinding)
+                Text("Sans secours, un refus ou une absence du premier laisse passer le texte brut, sans correction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Dès que le démon répond, le choix est offert, fût-ce sur un seul
+                // modèle : voir ce qui est servi vaut mieux que le deviner, et un
+                // `ollama pull` en ligne de commande n'a pas à obliger l'utilisateur
+                // à passer par un fichier de préférences pour en profiter.
+                if !modelOptions.isEmpty {
+                    Picker("Modèle Ollama", selection: ollamaModelBinding) {
+                        ForEach(modelOptions, id: \.self) { name in
                             Text(name).tag(name)
                         }
                     }
+                    Text("La liste vient de ce que sert le démon, relue à chaque ouverture de cet onglet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                Text("Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale. Ollama prend alors le relais, sans quoi la dictée passerait sans correction.")
+                Text(orderRationale)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Commandes de ponctuation") {
@@ -453,6 +468,85 @@ private struct TextSettings: View {
         case .daemonUnreachable:
             return "démon arrêté, aucun repli disponible"
         }
+    }
+
+    /// Les correcteurs dans leur ordre d'essai. Le premier de la liste est celui que
+    /// les préférences retiennent, l'autre suit.
+    private var order: [String] {
+        controller.preferences.correctionPrimary == "ollama" ? ["ollama", "apple"] : ["apple", "ollama"]
+    }
+
+    private var secondaryName: String {
+        order.last == "apple" ? "Apple" : "Ollama"
+    }
+
+    private func reorder(from source: IndexSet, to destination: Int) {
+        var moved = order
+        moved.move(fromOffsets: source, toOffset: destination)
+        guard let first = moved.first else { return }
+        controller.setCorrectionOrder(primary: first, fallback: controller.preferences.correctionFallback)
+    }
+
+    @ViewBuilder
+    private func correctorRow(_ identifier: String, rank: Int) -> some View {
+        if identifier == "apple" {
+            CorrectorRow(
+                label: "Apple, sur l'appareil",
+                detail: availability.apple
+                    ? role(of: "apple")
+                    : (AppleFoundationCorrector.unavailabilityReason ?? "indisponible"),
+                ready: availability.apple,
+                rank: rank
+            )
+        } else {
+            CorrectorRow(
+                label: "Ollama — \(controller.preferences.ollamaModel)",
+                detail: availability.ollama.isReady ? role(of: "ollama") : ollamaDetail,
+                ready: availability.ollama.isReady,
+                rank: rank
+            )
+        }
+    }
+
+    /// Le rôle réel d'un correcteur, et non celui qu'il tenait avant que l'ordre
+    /// devienne réglable. Une ligne qui annonce « utilisé en premier » quand l'autre
+    /// est passé devant vaut moins que pas de ligne du tout.
+    private func role(of identifier: String) -> String {
+        guard identifier != controller.preferences.correctionPrimary else {
+            return "prêt, utilisé en premier"
+        }
+        guard controller.preferences.correctionFallback else {
+            return "prêt, mais le secours est désactivé"
+        }
+        return "prêt, prend le relais en cas de refus ou de lenteur"
+    }
+
+    /// Le modèle retenu figure toujours dans la liste, même si le démon ne le sert
+    /// plus : sans cela le menu paraîtrait vide et l'on ne saurait pas ce qui est
+    /// configuré.
+    private var modelOptions: [String] {
+        let served = availability.ollama.served
+        let current = controller.preferences.ollamaModel
+        guard !served.isEmpty else { return [] }
+        return served.contains(current) ? served : [current] + served
+    }
+
+    private var orderRationale: String {
+        let apple = "Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale."
+        guard controller.preferences.correctionPrimary == "apple" else {
+            return "\(apple) Il ne verra ici que ce qu'Ollama n'a pas su corriger."
+        }
+        guard controller.preferences.correctionFallback else {
+            return "\(apple) Sans secours, ces dictées-là passeront sans correction."
+        }
+        return "\(apple) Ollama prend alors le relais, sans quoi la dictée passerait sans correction."
+    }
+
+    private var fallbackBinding: Binding<Bool> {
+        Binding(
+            get: { controller.preferences.correctionFallback },
+            set: { controller.setCorrectionOrder(primary: controller.preferences.correctionPrimary, fallback: $0) }
+        )
     }
 
     private var ollamaModelBinding: Binding<String> {
@@ -499,9 +593,28 @@ private struct CorrectorRow: View {
     let label: String
     let detail: String
     let ready: Bool
+    /// Rang dans l'ordre d'essai, `nil` hors d'une liste réordonnable.
+    ///
+    /// Le glisser-déposer ne s'annonce nulle part de lui-même : une liste macOS ne
+    /// montre aucune poignée, et rien ne distingue une ligne qu'on peut déplacer
+    /// d'une ligne qu'on ne peut pas. La poignée et le rang le disent sans phrase.
+    var rank: Int?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let rank {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("\(rank)")
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .help("Glissez pour changer l'ordre")
+            }
+
             Image(systemName: ready ? "checkmark.circle.fill" : "minus.circle")
                 .foregroundStyle(ready ? .green : .secondary)
             VStack(alignment: .leading, spacing: 2) {

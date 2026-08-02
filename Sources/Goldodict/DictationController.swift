@@ -198,6 +198,13 @@ final class DictationController {
         await corrector.availability()
     }
 
+    /// Change l'ordre d'essai des correcteurs.
+    func setCorrectionOrder(primary: String, fallback: Bool) {
+        preferences.correctionPrimary = primary
+        preferences.correctionFallback = fallback
+        Task { [corrector] in await corrector.setOrder(primary: primary, fallback: fallback) }
+    }
+
     /// Change le modèle de repli. Le service le précharge s'il est servi.
     func setOllamaModel(_ model: String) {
         guard model != preferences.ollamaModel else { return }
@@ -633,8 +640,11 @@ final class DictationController {
         // Le préchargement du modèle Ollama est déterminant : à froid, la première
         // correction demande près de huit secondes et serait abandonnée pour rien.
         let thresholds = CorrectionGuard.Thresholds(retention: preferences.correctionRetention)
+        let primary = preferences.correctionPrimary
+        let fallback = preferences.correctionFallback
         Task { [corrector] in
             await corrector.setThresholds(thresholds)
+            await corrector.setOrder(primary: primary, fallback: fallback)
             await corrector.warmUp()
         }
 
