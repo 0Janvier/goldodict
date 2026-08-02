@@ -95,10 +95,16 @@ def handle(request):
         return {"ok": True, "models": cached_models(), "default": DEFAULT_MODEL}
 
     if command == "load":
-        import mlx_whisper  # noqa: F401  (vérifie que la dépendance est là)
+        # Les poids sont chargés ici, et pas seulement le module. L'import de
+        # mlx_whisper coûte déjà 1,7 s, le chargement du modèle 1,7 s de plus, et
+        # les deux étaient payés par la première dictée. `load_model` remplit le
+        # cache que `transcribe` consulte ensuite.
+        from mlx_whisper import load_models
 
-        _state["model"] = request.get("model") or DEFAULT_MODEL
-        return {"ok": True, "model": _state["model"]}
+        model = request.get("model") or DEFAULT_MODEL
+        load_models.load_model(model)
+        _state["model"] = model
+        return {"ok": True, "model": model}
 
     if command == "transcribe":
         return do_transcribe(request)
