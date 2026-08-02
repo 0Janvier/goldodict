@@ -133,10 +133,6 @@ private final class OverlayModel {
     /// reste une capsule.
     static let barCount = 7
 
-    /// Au-delà, un enregistrement où rien n'est capté n'est plus un blanc dans la
-    /// phrase mais un micro coupé, et il faut le dire.
-    private static let silenceAlertDelay: TimeInterval = 3
-
     var state: DictationState = .idle
     var quote: String?
     private(set) var bars: [Float] = Array(repeating: 0, count: OverlayModel.barCount)
@@ -145,15 +141,15 @@ private final class OverlayModel {
 
     private var startedAt: TimeInterval = 0
     private var smoothed: Float = 0
-    private var lastAudibleAt: TimeInterval = 0
+    private var watch = SilenceWatch()
 
     func beginRecording() {
         let now = ProcessInfo.processInfo.systemUptime
         startedAt = now
-        lastAudibleAt = now
         elapsed = 0
         smoothed = 0
         isSilent = false
+        watch.begin(at: now)
         bars = Array(repeating: 0, count: Self.barCount)
     }
 
@@ -166,8 +162,8 @@ private final class OverlayModel {
         bars.removeFirst()
         bars.append(smoothed)
 
-        if smoothed > 0.05 { lastAudibleAt = now }
-        isSilent = now - lastAudibleAt > Self.silenceAlertDelay
+        watch.absorb(level: smoothed, at: now)
+        isSilent = watch.isSilent
     }
 
     func reset() {
