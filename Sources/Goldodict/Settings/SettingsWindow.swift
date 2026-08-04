@@ -16,17 +16,29 @@ final class SettingsWindowController {
         self.controller = controller
     }
 
+    /// Nom sous lequel macOS retient la taille et la position choisies.
+    private static let frameName = "fr.sztulman.goldodict.settings"
+
     func show() {
         if window == nil {
+            // Redimensionnable : la fenêtre contient désormais des listes de longueur
+            // arbitraire, l'historique, le lexique, les profils. Les figer à 760 sur
+            // 560 revenait à décider pour l'utilisateur combien de lignes il a le
+            // droit de voir d'un coup.
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
-                styleMask: [.titled, .closable, .miniaturizable],
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "Réglages de Goldodict"
             window.isReleasedWhenClosed = false
-            window.center()
+            // La taille choisie est retenue d'une session à l'autre. Le centrage ne
+            // vaut que la première fois, faute de quoi il défferait ce réglage.
+            if !window.setFrameUsingName(Self.frameName) {
+                window.center()
+            }
+            window.setFrameAutosaveName(Self.frameName)
             window.contentView = NSHostingView(rootView: SettingsView(controller: controller))
             self.window = window
         }

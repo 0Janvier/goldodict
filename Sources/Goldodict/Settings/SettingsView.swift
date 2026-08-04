@@ -94,7 +94,9 @@ struct SettingsView: View {
             }
             .navigationTitle(section.title)
         }
-        .frame(width: 760, height: 560)
+        // Un plancher, pas une taille : sous 700 sur 460 la barre latérale et le
+        // détail se disputent la place, au-dessus c'est à l'utilisateur de voir.
+        .frame(minWidth: 700, idealWidth: 760, minHeight: 460, idealHeight: 560)
     }
 }
 
