@@ -136,8 +136,7 @@ private struct StatusPanel: View {
     let controller: DictationController
     let showCorrection: () -> Void
 
-    @State private var availability: (apple: Bool, ollama: Bool) = (false, false)
-    @State private var pulse = 0
+    @State private var availability = CorrectionService.Availability(apple: false, ollama: .daemonUnreachable)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -173,7 +172,7 @@ private struct StatusPanel: View {
 
             StatusLine(
                 label: "Relecture",
-                ok: availability.apple || availability.ollama,
+                ok: availability.apple || availability.ollama.isReady,
                 detail: correctorDetail,
                 action: showCorrection
             )
@@ -181,15 +180,19 @@ private struct StatusPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { availability = await controller.correctorAvailability() }
+        // Le relevé est refait, et pas seulement compté : `pulse` était incrémenté
+        // sans être lu, et SwiftUI n'invalide une vue que sur les valeurs dont son
+        // corps dépend. Le bandeau restait donc sur l'état du premier affichage,
+        // alors même qu'il existe pour rendre compte de ce qui bouge au-dehors.
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            pulse &+= 1
+            Task { availability = await controller.correctorAvailability() }
         }
     }
 
     private var correctorDetail: String {
         if !controller.preferences.correctionEnabled { return "désactivée" }
         if availability.apple { return "modèle Apple" }
-        if availability.ollama { return "Ollama" }
+        if availability.ollama.isReady { return "Ollama" }
         return "aucun modèle disponible"
     }
 }
@@ -359,7 +362,7 @@ private enum Fidelity: String, CaseIterable, Identifiable {
 
 private struct TextSettings: View {
     let controller: DictationController
-    @State private var availability: (apple: Bool, ollama: Bool) = (false, false)
+    @State private var availability = CorrectionService.Availability(apple: false, ollama: .daemonUnreachable)
 
     var body: some View {
         Form {
@@ -385,23 +388,49 @@ private struct TextSettings: View {
             }
 
             Section("Modèles de relecture") {
-                CorrectorRow(
-                    label: "Apple, sur l'appareil",
-                    detail: availability.apple
-                        ? "prêt, utilisé en premier"
-                        : (AppleFoundationCorrector.unavailabilityReason ?? "indisponible"),
-                    ready: availability.apple
-                )
-                CorrectorRow(
-                    label: "Ollama — \(controller.preferences.ollamaModel)",
-                    detail: availability.ollama
-                        ? "prêt, prend le relais en cas de refus ou de lenteur"
-                        : "démon arrêté, aucun repli disponible",
-                    ready: availability.ollama
-                )
-                Text("Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale. Ollama prend alors le relais, sans quoi la dictée passerait sans correction.")
+                // L'ordre se montre au lieu de se choisir : deux lignes qu'on
+                // déplace disent d'un coup d'œil qui passe devant, là où une liste
+                // déroulante obligeait à la lire pour le savoir.
+                List {
+                    ForEach(Array(order.enumerated()), id: \.element) { index, identifier in
+                        correctorRow(identifier, rank: index + 1)
+                    }
+                    .onMove(perform: reorder)
+                }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .frame(height: 96)
+
+                Text("Le numéro 1 est essayé d'abord. Glissez une ligne par sa poignée pour changer l'ordre.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Utiliser \(secondaryName) en secours", isOn: fallbackBinding)
+                Text("Sans secours, un refus ou une absence du premier laisse passer le texte brut, sans correction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Dès que le démon répond, le choix est offert, fût-ce sur un seul
+                // modèle : voir ce qui est servi vaut mieux que le deviner, et un
+                // `ollama pull` en ligne de commande n'a pas à obliger l'utilisateur
+                // à passer par un fichier de préférences pour en profiter.
+                if !modelOptions.isEmpty {
+                    Picker("Modèle Ollama", selection: ollamaModelBinding) {
+                        ForEach(modelOptions, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    Text("La liste vient de ce que sert le démon, relue à chaque ouverture de cet onglet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(orderRationale)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Commandes de ponctuation") {
@@ -423,6 +452,114 @@ private struct TextSettings: View {
         }
         .formStyle(.grouped)
         .task { availability = await controller.correctorAvailability() }
+    }
+
+    /// Le constat, dans les termes de ce qui s'est réellement passé. « Démon arrêté »
+    /// pour un démon qui tourne mais ne sert pas le bon modèle envoyait l'utilisateur
+    /// lancer ce qui était déjà lancé.
+    private var ollamaDetail: String {
+        switch availability.ollama {
+        case .ready:
+            return "prêt, prend le relais en cas de refus ou de lenteur"
+        case .modelMissing(let served) where served.isEmpty:
+            return "démon en marche, aucun modèle installé"
+        case .modelMissing:
+            return "démon en marche, mais ce modèle n'est pas servi"
+        case .daemonUnreachable:
+            return "démon arrêté, aucun repli disponible"
+        }
+    }
+
+    /// Les correcteurs dans leur ordre d'essai. Le premier de la liste est celui que
+    /// les préférences retiennent, l'autre suit.
+    private var order: [String] {
+        controller.preferences.correctionPrimary == "ollama" ? ["ollama", "apple"] : ["apple", "ollama"]
+    }
+
+    private var secondaryName: String {
+        order.last == "apple" ? "Apple" : "Ollama"
+    }
+
+    private func reorder(from source: IndexSet, to destination: Int) {
+        var moved = order
+        moved.move(fromOffsets: source, toOffset: destination)
+        guard let first = moved.first else { return }
+        controller.setCorrectionOrder(primary: first, fallback: controller.preferences.correctionFallback)
+    }
+
+    @ViewBuilder
+    private func correctorRow(_ identifier: String, rank: Int) -> some View {
+        if identifier == "apple" {
+            CorrectorRow(
+                label: "Apple, sur l'appareil",
+                detail: availability.apple
+                    ? role(of: "apple")
+                    : (AppleFoundationCorrector.unavailabilityReason ?? "indisponible"),
+                ready: availability.apple,
+                rank: rank
+            )
+        } else {
+            CorrectorRow(
+                label: "Ollama — \(controller.preferences.ollamaModel)",
+                detail: availability.ollama.isReady ? role(of: "ollama") : ollamaDetail,
+                ready: availability.ollama.isReady,
+                rank: rank
+            )
+        }
+    }
+
+    /// Le rôle réel d'un correcteur, et non celui qu'il tenait avant que l'ordre
+    /// devienne réglable. Une ligne qui annonce « utilisé en premier » quand l'autre
+    /// est passé devant vaut moins que pas de ligne du tout.
+    private func role(of identifier: String) -> String {
+        guard identifier != controller.preferences.correctionPrimary else {
+            return "prêt, utilisé en premier"
+        }
+        guard controller.preferences.correctionFallback else {
+            return "prêt, mais le secours est désactivé"
+        }
+        return "prêt, prend le relais en cas de refus ou de lenteur"
+    }
+
+    /// Le modèle retenu figure toujours dans la liste, même si le démon ne le sert
+    /// plus : sans cela le menu paraîtrait vide et l'on ne saurait pas ce qui est
+    /// configuré.
+    private var modelOptions: [String] {
+        let served = availability.ollama.served
+        let current = controller.preferences.ollamaModel
+        guard !served.isEmpty else { return [] }
+        return served.contains(current) ? served : [current] + served
+    }
+
+    private var orderRationale: String {
+        let apple = "Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale."
+        guard controller.preferences.correctionPrimary == "apple" else {
+            return "\(apple) Il ne verra ici que ce qu'Ollama n'a pas su corriger."
+        }
+        guard controller.preferences.correctionFallback else {
+            return "\(apple) Sans secours, ces dictées-là passeront sans correction."
+        }
+        return "\(apple) Ollama prend alors le relais, sans quoi la dictée passerait sans correction."
+    }
+
+    private var fallbackBinding: Binding<Bool> {
+        Binding(
+            get: { controller.preferences.correctionFallback },
+            set: { controller.setCorrectionOrder(primary: controller.preferences.correctionPrimary, fallback: $0) }
+        )
+    }
+
+    private var ollamaModelBinding: Binding<String> {
+        Binding(
+            get: { controller.preferences.ollamaModel },
+            set: { model in
+                controller.setOllamaModel(model)
+                // Le verdict change avec le choix : relire tout de suite évite que la
+                // ligne annonce encore « ce modèle n'est pas servi » pour un modèle
+                // qu'on vient de prendre dans la liste de ce qui est servi.
+                Task { availability = await controller.correctorAvailability() }
+            }
+        )
     }
 
     private var enabledBinding: Binding<Bool> {
@@ -456,9 +593,28 @@ private struct CorrectorRow: View {
     let label: String
     let detail: String
     let ready: Bool
+    /// Rang dans l'ordre d'essai, `nil` hors d'une liste réordonnable.
+    ///
+    /// Le glisser-déposer ne s'annonce nulle part de lui-même : une liste macOS ne
+    /// montre aucune poignée, et rien ne distingue une ligne qu'on peut déplacer
+    /// d'une ligne qu'on ne peut pas. La poignée et le rang le disent sans phrase.
+    var rank: Int?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let rank {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("\(rank)")
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .help("Glissez pour changer l'ordre")
+            }
+
             Image(systemName: ready ? "checkmark.circle.fill" : "minus.circle")
                 .foregroundStyle(ready ? .green : .secondary)
             VStack(alignment: .leading, spacing: 2) {

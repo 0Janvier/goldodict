@@ -194,8 +194,22 @@ final class DictationController {
         profileStore.update(profile)
     }
 
-    func correctorAvailability() async -> (apple: Bool, ollama: Bool) {
+    func correctorAvailability() async -> CorrectionService.Availability {
         await corrector.availability()
+    }
+
+    /// Change l'ordre d'essai des correcteurs.
+    func setCorrectionOrder(primary: String, fallback: Bool) {
+        preferences.correctionPrimary = primary
+        preferences.correctionFallback = fallback
+        Task { [corrector] in await corrector.setOrder(primary: primary, fallback: fallback) }
+    }
+
+    /// Change le modèle de repli. Le service le précharge s'il est servi.
+    func setOllamaModel(_ model: String) {
+        guard model != preferences.ollamaModel else { return }
+        preferences.ollamaModel = model
+        Task { [corrector] in await corrector.setOllamaModel(model) }
     }
 
     func setCorrectionRetention(_ value: Double) {
@@ -224,7 +238,15 @@ final class DictationController {
     private var pipeline = TranscriptPipeline()
 
     let profileStore = ProfileStore()
-    private let corrector = CorrectionService()
+    /// Le modèle de repli vient des préférences, et non du défaut compilé.
+    ///
+    /// `CorrectionService()` était construit sans argument : le réglage
+    /// `correction.ollamaModel` avait un getter, un setter, un défaut enregistré et
+    /// une place dans les réglages, mais n'atteignait jamais le correcteur, qui
+    /// restait sur `qwen3:8b` quoi qu'on choisisse. Différé, parce qu'il lui faut
+    /// `preferences`.
+    @ObservationIgnored
+    private lazy var corrector = CorrectionService(ollamaModel: preferences.ollamaModel)
 
     /// Profil retenu pour la dictée en cours.
     ///
@@ -618,8 +640,11 @@ final class DictationController {
         // Le préchargement du modèle Ollama est déterminant : à froid, la première
         // correction demande près de huit secondes et serait abandonnée pour rien.
         let thresholds = CorrectionGuard.Thresholds(retention: preferences.correctionRetention)
+        let primary = preferences.correctionPrimary
+        let fallback = preferences.correctionFallback
         Task { [corrector] in
             await corrector.setThresholds(thresholds)
+            await corrector.setOrder(primary: primary, fallback: fallback)
             await corrector.warmUp()
         }
 
