@@ -135,7 +135,7 @@ final class DictationController {
 
         Task { [weak self] in
             let format = await newEngine.preferredAudioFormat()
-            await self?.cache(audioFormat: format)
+            await self?.cache(audioFormat: format, from: newEngine.identifier)
         }
     }
 
@@ -642,7 +642,13 @@ final class DictationController {
         // Le modèle de langue peut demander un téléchargement au premier lancement.
         // L'anticiper évite que la première dictée échoue faute de modèle.
         let locale = self.locale
-        let engine = self.appleEngine as TranscriptionEngine
+        // Le moteur interrogé est celui en service, et non `appleEngine` : la
+        // restauration du moteur enregistré a déjà eu lieu quelques lignes plus haut,
+        // et sa propre résolution de format aboutit plus vite que celle-ci. Demander
+        // le format d'Apple ici revenait à l'écraser systématiquement, et à livrer de
+        // l'Int16 à un moteur qui attend du mono virgule flottante.
+        let active = engine
+        let identifier = currentEngineIdentifier
         Task { [weak self] in
             do {
                 try await AppleSpeechEngine.prepareAssets(for: locale)
@@ -652,9 +658,9 @@ final class DictationController {
             // Le format doit être connu AVANT la première capture : livrer au moteur
             // un format autre que celui qu'il réclame ne produit pas une erreur mais
             // une assertion fatale dans le framework Speech.
-            let format = await engine.preferredAudioFormat()
-            Log.engine.notice("format du moteur : \(format, privacy: .public)")
-            await self?.cache(audioFormat: format)
+            let format = await active.preferredAudioFormat()
+            Log.engine.notice("format du moteur \(identifier, privacy: .public) : \(format, privacy: .public)")
+            await self?.cache(audioFormat: format, from: identifier)
         }
     }
 
@@ -964,7 +970,18 @@ final class DictationController {
         state = .failed(reason)
     }
 
-    private func cache(audioFormat: AVAudioFormat) {
+    /// Retient le format, sauf s'il vient d'un moteur qui n'est plus en service.
+    ///
+    /// Deux résolutions peuvent être en vol en même temps, celle du lancement et
+    /// celle d'un changement de moteur, et rien ne garantit leur ordre d'arrivée.
+    /// Sans cette garde, la dernière arrivée gagne, fût-elle périmée.
+    private func cache(audioFormat: AVAudioFormat, from identifier: String) {
+        guard identifier == currentEngineIdentifier else {
+            Log.engine.notice(
+                "format de \(identifier, privacy: .public) écarté, le moteur en service est \(self.currentEngineIdentifier, privacy: .public)"
+            )
+            return
+        }
         self.audioFormat = audioFormat
     }
 
