@@ -136,8 +136,7 @@ private struct StatusPanel: View {
     let controller: DictationController
     let showCorrection: () -> Void
 
-    @State private var availability: (apple: Bool, ollama: Bool) = (false, false)
-    @State private var pulse = 0
+    @State private var availability = CorrectionService.Availability(apple: false, ollama: .daemonUnreachable)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -173,7 +172,7 @@ private struct StatusPanel: View {
 
             StatusLine(
                 label: "Relecture",
-                ok: availability.apple || availability.ollama,
+                ok: availability.apple || availability.ollama.isReady,
                 detail: correctorDetail,
                 action: showCorrection
             )
@@ -181,15 +180,19 @@ private struct StatusPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { availability = await controller.correctorAvailability() }
+        // Le relevé est refait, et pas seulement compté : `pulse` était incrémenté
+        // sans être lu, et SwiftUI n'invalide une vue que sur les valeurs dont son
+        // corps dépend. Le bandeau restait donc sur l'état du premier affichage,
+        // alors même qu'il existe pour rendre compte de ce qui bouge au-dehors.
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            pulse &+= 1
+            Task { availability = await controller.correctorAvailability() }
         }
     }
 
     private var correctorDetail: String {
         if !controller.preferences.correctionEnabled { return "désactivée" }
         if availability.apple { return "modèle Apple" }
-        if availability.ollama { return "Ollama" }
+        if availability.ollama.isReady { return "Ollama" }
         return "aucun modèle disponible"
     }
 }
@@ -359,7 +362,7 @@ private enum Fidelity: String, CaseIterable, Identifiable {
 
 private struct TextSettings: View {
     let controller: DictationController
-    @State private var availability: (apple: Bool, ollama: Bool) = (false, false)
+    @State private var availability = CorrectionService.Availability(apple: false, ollama: .daemonUnreachable)
 
     var body: some View {
         Form {
@@ -394,11 +397,22 @@ private struct TextSettings: View {
                 )
                 CorrectorRow(
                     label: "Ollama — \(controller.preferences.ollamaModel)",
-                    detail: availability.ollama
-                        ? "prêt, prend le relais en cas de refus ou de lenteur"
-                        : "démon arrêté, aucun repli disponible",
-                    ready: availability.ollama
+                    detail: ollamaDetail,
+                    ready: availability.ollama.isReady
                 )
+
+                // Le choix n'apparaît que si le démon répond, et il est peuplé de ce
+                // qu'il sert réellement plutôt que d'un catalogue à jour d'on ne sait
+                // quand. Un seul modèle servi et déjà retenu ne mérite pas de liste.
+                if availability.ollama.served.count > 1 || !availability.ollama.isReady,
+                   !availability.ollama.served.isEmpty {
+                    Picker("Modèle", selection: ollamaModelBinding) {
+                        ForEach(availability.ollama.served, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                }
+
                 Text("Le modèle d'Apple refuse parfois les contenus sensibles, fréquents en matière pénale. Ollama prend alors le relais, sans quoi la dictée passerait sans correction.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -423,6 +437,35 @@ private struct TextSettings: View {
         }
         .formStyle(.grouped)
         .task { availability = await controller.correctorAvailability() }
+    }
+
+    /// Le constat, dans les termes de ce qui s'est réellement passé. « Démon arrêté »
+    /// pour un démon qui tourne mais ne sert pas le bon modèle envoyait l'utilisateur
+    /// lancer ce qui était déjà lancé.
+    private var ollamaDetail: String {
+        switch availability.ollama {
+        case .ready:
+            return "prêt, prend le relais en cas de refus ou de lenteur"
+        case .modelMissing(let served) where served.isEmpty:
+            return "démon en marche, aucun modèle installé"
+        case .modelMissing:
+            return "démon en marche, mais ce modèle n'est pas servi"
+        case .daemonUnreachable:
+            return "démon arrêté, aucun repli disponible"
+        }
+    }
+
+    private var ollamaModelBinding: Binding<String> {
+        Binding(
+            get: { controller.preferences.ollamaModel },
+            set: { model in
+                controller.setOllamaModel(model)
+                // Le verdict change avec le choix : relire tout de suite évite que la
+                // ligne annonce encore « ce modèle n'est pas servi » pour un modèle
+                // qu'on vient de prendre dans la liste de ce qui est servi.
+                Task { availability = await controller.correctorAvailability() }
+            }
+        )
     }
 
     private var enabledBinding: Binding<Bool> {

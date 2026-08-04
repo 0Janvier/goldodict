@@ -24,16 +24,49 @@ final class OllamaCorrector: TextCorrector {
         self.model = model
     }
 
-    func isAvailable() async -> Bool {
+    /// Ce que le démon répond, et ce qu'on peut en faire.
+    ///
+    /// Les deux échecs demandent des gestes opposés : lancer Ollama d'un côté,
+    /// choisir ou télécharger un modèle de l'autre. Les confondre en un seul `false`
+    /// envoyait l'utilisateur démarrer un démon qui tournait déjà.
+    enum Availability: Sendable, Equatable {
+        case ready(served: [String])
+        /// Le démon répond, mais il ne sert pas le modèle demandé.
+        case modelMissing(served: [String])
+        case daemonUnreachable
+
+        /// Ce que le démon sert, quel que soit le verdict. La liste accompagne les
+        /// deux cas où il répond : c'est elle qui permet de proposer un choix plutôt
+        /// que de renvoyer l'utilisateur à la ligne de commande.
+        var served: [String] {
+            switch self {
+            case .ready(let served), .modelMissing(let served): return served
+            case .daemonUnreachable: return []
+            }
+        }
+
+        var isReady: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+    }
+
+    func availability() async -> Availability {
         var request = URLRequest(url: URL(string: "http://localhost:11434/api/tags")!)
         request.timeoutInterval = 1.5
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200,
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = payload["models"] as? [[String: Any]] else {
-            return false
+            return .daemonUnreachable
         }
-        return models.contains { ($0["name"] as? String) == model }
+
+        let served = models.compactMap { $0["name"] as? String }.sorted()
+        return served.contains(model) ? .ready(served: served) : .modelMissing(served: served)
+    }
+
+    func isAvailable() async -> Bool {
+        await availability().isReady
     }
 
     /// Charge le modèle en mémoire sans rien lui demander, pour que la première
