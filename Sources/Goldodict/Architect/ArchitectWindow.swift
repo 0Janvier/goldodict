@@ -83,8 +83,19 @@ struct ArchitectView: View {
             case .idle:
                 Label("Prêt à dicter", systemImage: "doc.text")
             case .recording:
-                Label("Dictée en cours", systemImage: "mic.fill")
-                    .foregroundStyle(.red)
+                if session.isSilent {
+                    Label(
+                        AudioDevices.silenceMessage(device: session.inputDeviceName),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    Text(AudioDevices.settingsHint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Dictée en cours", systemImage: "mic.fill")
+                        .foregroundStyle(.red)
+                }
                 MenuLevelMeter(level: { session.level })
                     .frame(maxWidth: 120)
             case .paused:
