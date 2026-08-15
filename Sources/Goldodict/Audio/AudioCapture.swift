@@ -22,10 +22,11 @@ enum AudioCaptureError: LocalizedError {
 /// avec le format natif — passer un format différent fait crasher `AVAudioEngine` —
 /// et un `AVAudioConverter` ramène chaque tampon au format cible.
 ///
-/// Le moteur est recréé à chaque capture. Une instance unique survivant aux
-/// changements de périphérique d'entrée rend un format périmé (l'ancien matériel),
-/// et `installTap` lève alors une exception Objective-C qu'aucun `catch` Swift
-/// n'intercepte : la dictée cesse de démarrer jusqu'au relancement de l'application.
+/// Le moteur survit d'une capture à l'autre, et n'est reconstruit qu'au changement
+/// de configuration audio. Une instance unique survivant à un changement de
+/// périphérique rendrait un format périmé, et `installTap` lève alors une exception
+/// Objective-C qu'aucun `catch` Swift n'intercepte : c'est `reusableEngine()` qui
+/// garde ce danger, en écoutant `AVAudioEngineConfigurationChange`.
 ///
 /// Le format cible est fourni par l'appelant, car les deux moteurs ne demandent pas
 /// la même chose : Whisper veut du 16 kHz mono, Apple impose le format que lui rend
@@ -47,6 +48,7 @@ final class AudioCapture {
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     private var engine: AVAudioEngine?
+    private var configurationObserver: NSObjectProtocol?
     private var targetFormat = AudioCapture.whisperFormat
 
     private var converter: AVAudioConverter?
@@ -76,7 +78,7 @@ final class AudioCapture {
         meter.reset()
         self.targetFormat = targetFormat
 
-        let engine = AVAudioEngine()
+        let engine = reusableEngine()
         let input = engine.inputNode
         let nativeFormat = input.outputFormat(forBus: 0)
 
@@ -95,19 +97,79 @@ final class AudioCapture {
         } catch {
             input.removeTap(onBus: 0)
             self.converter = nil
+            // Un démarrage refusé peut venir d'un moteur devenu bancal : on repart
+            // d'une instance neuve à la tentative suivante.
+            discardEngine()
             throw AudioCaptureError.engineFailed(error.localizedDescription)
         }
-        self.engine = engine
         isRunning = true
     }
 
+    /// Moteur réutilisé d'une capture à l'autre.
+    ///
+    /// Le premier accès à `inputNode` instancie l'unité d'entrée et initialise le
+    /// HAL : mesuré entre 237 et 418 ms sur une machine ordinaire, soit près de la
+    /// totalité du coût d'ouverture. Le payer à chaque dictée décalait le micro d'un
+    /// quart de seconde derrière le geste, et sur un push-to-talk de 400 ms il ne
+    /// restait presque rien à transcrire.
+    ///
+    /// L'instance survit donc aux captures. Elle n'est pas pour autant laissée en
+    /// marche : `stop()` arrête bien le moteur, le périphérique est rendu et le
+    /// témoin orange de macOS s'éteint. Seule l'unité déjà instanciée est conservée.
+    ///
+    /// Le danger que la version précédente évitait en repartant de zéro reste
+    /// gardé : un moteur qui survit à un changement de périphérique rend un format
+    /// périmé, et `installTap` lève alors une exception Objective-C qu'aucun `catch`
+    /// Swift n'intercepte. `AVAudioEngineConfigurationChange` prévient de ce
+    /// changement, et l'instance est jetée à ce moment-là plutôt qu'à chaque fois.
+    private func reusableEngine() -> AVAudioEngine {
+        if let engine { return engine }
+
+        let engine = AVAudioEngine()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.isRunning else { return }
+            Log.audio.notice("configuration audio changée, moteur reconstruit à la prochaine capture")
+            self.discardEngine()
+        }
+        self.engine = engine
+        return engine
+    }
+
+    /// Instancie l'unité d'entrée sans ouvrir le micro.
+    ///
+    /// Faire survivre le moteur épargne son instanciation à toutes les dictées sauf
+    /// une : la première de la session la paie encore, et c'est justement celle où
+    /// l'utilisateur découvre que rien ne s'enregistre. Le coût est donc payé au
+    /// lancement, à un moment où personne n'attend rien.
+    ///
+    /// Le moteur n'est pas démarré. Le périphérique n'est pas ouvert et le témoin
+    /// d'utilisation du micro ne s'allume pas : seule l'unité est mise en place.
+    func warmUp() {
+        guard engine == nil else { return }
+        _ = reusableEngine().inputNode.outputFormat(forBus: 0)
+    }
+
+    private func discardEngine() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+        engine = nil
+    }
+
     /// Arrête la capture et rend l'intégralité des échantillons collectés.
+    ///
+    /// Le moteur est arrêté mais gardé : c'est son unité d'entrée déjà instanciée
+    /// qui fait gagner le quart de seconde à la dictée suivante.
     @discardableResult
     func stop() -> [Float] {
         guard isRunning, let engine else { return accumulator.drain() }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        self.engine = nil
         converter = nil
         isRunning = false
         return accumulator.drain()
@@ -218,3 +280,4 @@ private final class LevelMeter {
         latest = 0
     }
 }
+

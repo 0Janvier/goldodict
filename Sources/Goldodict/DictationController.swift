@@ -629,6 +629,15 @@ final class DictationController {
         profileStore.load()
         styleObservationStore.load()
         ArchitectSession.purgeStaleSessions()
+
+        // L'unité d'entrée audio est mise en place tout de suite, mais pas dans la
+        // foulée du lancement : elle coûte un quart de seconde, et le raccourci a
+        // priorité. Deux secondes plus tard, plus personne n'attend, et la première
+        // dictée ne paiera plus ce que toutes les suivantes s'épargnent déjà.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            self?.capture.warmUp()
+        }
         reloadPipeline()
         restoreRelaunchHandoff()
 
