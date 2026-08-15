@@ -204,8 +204,15 @@ final class DictationController {
         profileStore.update(profile)
     }
 
-    func correctorAvailability() async -> (apple: Bool, ollama: Bool) {
+    func correctorAvailability() async -> CorrectionService.Availability {
         await corrector.availability()
+    }
+
+    /// Change le modèle de repli. Le service le précharge s'il est servi.
+    func setOllamaModel(_ model: String) {
+        guard model != preferences.ollamaModel else { return }
+        preferences.ollamaModel = model
+        Task { [corrector] in await corrector.setOllamaModel(model) }
     }
 
     func setCorrectionRetention(_ value: Double) {
@@ -234,7 +241,15 @@ final class DictationController {
     private var pipeline = TranscriptPipeline()
 
     let profileStore = ProfileStore()
-    private let corrector = CorrectionService()
+    /// Le modèle de repli vient des préférences, et non du défaut compilé.
+    ///
+    /// `CorrectionService()` était construit sans argument : le réglage
+    /// `correction.ollamaModel` avait un getter, un setter, un défaut enregistré et
+    /// une place dans les réglages, mais n'atteignait jamais le correcteur, qui
+    /// restait sur `qwen3:8b` quoi qu'on choisisse. Différé, parce qu'il lui faut
+    /// `preferences`.
+    @ObservationIgnored
+    private lazy var corrector = CorrectionService(ollamaModel: preferences.ollamaModel)
 
     /// Profil retenu pour la dictée en cours.
     ///

@@ -21,8 +21,16 @@ actor CorrectionService {
     /// qu'un texte qui n'arrive pas.
     private static let deadline: Duration = .seconds(4)
 
+    /// État des deux correcteurs, pour l'affichage dans les réglages.
+    struct Availability: Sendable {
+        let apple: Bool
+        let ollama: OllamaCorrector.Availability
+    }
+
     private let apple = AppleFoundationCorrector()
-    private let ollama: OllamaCorrector
+    /// Remplacé, et non muté : le modèle est immuable dans `OllamaCorrector`, ce qui
+    /// évite une propriété partagée entre l'acteur et les appels en vol.
+    private var ollama: OllamaCorrector
     private var guardRail = CorrectionGuard()
 
     init(ollamaModel: String = OllamaCorrector.defaultModel) {
@@ -31,6 +39,14 @@ actor CorrectionService {
 
     func setThresholds(_ thresholds: CorrectionGuard.Thresholds) {
         guardRail.thresholds = thresholds
+    }
+
+    /// Change le modèle de repli et le précharge s'il est servi.
+    func setOllamaModel(_ model: String) async {
+        guard model != ollama.model else { return }
+        ollama = OllamaCorrector(model: model)
+        Log.engine.notice("modèle Ollama choisi : \(model, privacy: .public)")
+        if await ollama.isAvailable() { await ollama.warmUp() }
     }
 
     /// Prépare les deux correcteurs. Le préchargement d'Ollama est le plus utile :
@@ -45,16 +61,21 @@ actor CorrectionService {
             )
         }
 
-        if await ollama.isAvailable() {
+        switch await ollama.availability() {
+        case .ready:
             await ollama.warmUp()
-        } else {
-            Log.engine.notice("Ollama indisponible, pas de repli de correction")
+        case .modelMissing(let served):
+            Log.engine.notice(
+                "Ollama tourne mais ne sert pas \(self.ollama.model, privacy: .public) — servis : [\(served.joined(separator: ", "), privacy: .public)]"
+            )
+        case .daemonUnreachable:
+            Log.engine.notice("démon Ollama injoignable, pas de repli de correction")
         }
     }
 
     /// Correcteurs opérationnels, pour l'affichage dans les réglages.
-    func availability() async -> (apple: Bool, ollama: Bool) {
-        await (apple.isAvailable(), ollama.isAvailable())
+    func availability() async -> Availability {
+        await Availability(apple: apple.isAvailable(), ollama: ollama.availability())
     }
 
     func correct(_ raw: String, styleNotes: [String] = []) async -> Outcome {
