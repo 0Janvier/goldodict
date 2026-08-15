@@ -27,6 +27,8 @@ final class Preferences {
         static let correctionEnabled = "correction.enabled"
         static let correctionRetention = "correction.retention"
         static let ollamaModel = "correction.ollamaModel"
+        static let correctionPrimary = "correction.primary"
+        static let correctionFallback = "correction.fallback"
         static let lineFormat = "repliques.format"
         static let hotkeyTrigger = "hotkey.binding"
         static let styleLearning = "learning.styleEnabled"
@@ -64,6 +66,10 @@ final class Preferences {
             Key.capitalize: true,
             Key.correctionEnabled: true,
             Key.correctionRetention: 0.75,
+            // Apple d'abord par défaut : instantané, sans dépendance, et présent sur
+            // toutes les machines. Qui a monté un Ollama sait le mettre devant.
+            Key.correctionPrimary: "apple",
+            Key.correctionFallback: true,
             Key.ollamaModel: OllamaCorrector.defaultModel,
             Key.lineFormat: MovieLineFormat.repliqueEtFilm.rawValue,
             Key.styleLearning: true,
@@ -126,6 +132,22 @@ final class Preferences {
     var reviewBeforePaste: Bool {
         get { access(keyPath: \.reviewBeforePaste); return defaults.bool(forKey: Key.reviewBeforePaste) }
         set { withMutation(keyPath: \.reviewBeforePaste) { defaults.set(newValue, forKey: Key.reviewBeforePaste) } }
+    }
+
+    /// Correcteur essayé en premier, « apple » ou « ollama ».
+    ///
+    /// Le défaut place Apple devant pour la latence, mais l'ordre est un arbitrage
+    /// entre vitesse et qualité, et il n'appartient pas à l'application de le
+    /// trancher pour quelqu'un qui a monté un modèle local plus solide.
+    var correctionPrimary: String {
+        get { access(keyPath: \.correctionPrimary); return defaults.string(forKey: Key.correctionPrimary) ?? "apple" }
+        set { withMutation(keyPath: \.correctionPrimary) { defaults.set(newValue, forKey: Key.correctionPrimary) } }
+    }
+
+    /// Essayer l'autre correcteur quand le premier refuse, manque ou traîne.
+    var correctionFallback: Bool {
+        get { access(keyPath: \.correctionFallback); return defaults.bool(forKey: Key.correctionFallback) }
+        set { withMutation(keyPath: \.correctionFallback) { defaults.set(newValue, forKey: Key.correctionFallback) } }
     }
 
     /// Part minimale des mots à conserver pour qu'une correction soit acceptée.

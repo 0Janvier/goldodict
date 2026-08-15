@@ -32,6 +32,8 @@ actor CorrectionService {
     /// évite une propriété partagée entre l'acteur et les appels en vol.
     private var ollama: OllamaCorrector
     private var guardRail = CorrectionGuard()
+    private var primaryIdentifier = "apple"
+    private var useFallback = true
 
     init(ollamaModel: String = OllamaCorrector.defaultModel) {
         ollama = OllamaCorrector(model: ollamaModel)
@@ -39,6 +41,28 @@ actor CorrectionService {
 
     func setThresholds(_ thresholds: CorrectionGuard.Thresholds) {
         guardRail.thresholds = thresholds
+    }
+
+    /// Ordre d'essai des correcteurs.
+    ///
+    /// Apple d'abord vaut pour la latence, pas dans l'absolu : un Ollama monté avec
+    /// un gros modèle corrige souvent mieux, et son seul défaut est de coûter une
+    /// seconde de plus. L'arbitrage entre vitesse et qualité revient à celui qui
+    /// dicte, pas à l'application.
+    ///
+    /// - Parameter fallback: essayer l'autre quand le premier refuse le contenu,
+    ///   manque, ou dépasse le délai. Sans lui, un refus laisse passer le texte brut.
+    func setOrder(primary: String, fallback: Bool) {
+        primaryIdentifier = primary
+        useFallback = fallback
+    }
+
+    /// Les correcteurs à essayer, dans l'ordre.
+    private var chain: [TextCorrector] {
+        let ordered: [TextCorrector] = primaryIdentifier == ollama.identifier
+            ? [ollama, apple]
+            : [apple, ollama]
+        return useFallback ? ordered : Array(ordered.prefix(1))
     }
 
     /// Change le modèle de repli et le précharge s'il est servi.
@@ -84,10 +108,8 @@ actor CorrectionService {
             return Outcome(text: raw, applied: false, note: nil)
         }
 
-        // Apple d'abord pour la latence ; Ollama prend le relais s'il refuse le
-        // contenu, s'il est indisponible ou s'il est trop lent.
         var note: String?
-        for corrector in [apple as TextCorrector, ollama as TextCorrector] {
+        for corrector in chain {
             do {
                 let corrected = try await withDeadline(Self.deadline) {
                     try await corrector.correct(trimmed, styleNotes: styleNotes)
