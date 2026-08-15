@@ -49,10 +49,20 @@ struct OnboardingView: View {
     let finish: () -> Void
 
     @State private var step = 0
-    /// Les autorisations changent dans les Réglages Système, hors de portée de
-    /// SwiftUI : sans relevé périodique, la fenêtre continuerait d'afficher « refusé »
-    /// une fois l'utilisateur revenu.
-    @State private var pulse = 0
+
+    /// Relevé des trois autorisations, recopié dans un état que le corps lit.
+    ///
+    /// Les autorisations changent hors de l'application, dans les Réglages Système
+    /// ou dans une fenêtre système, et les propriétés du contrôleur qui les rendent
+    /// interrogent le système à chaque lecture : `@Observable` n'a rien à y suivre.
+    /// D'où le relevé périodique.
+    ///
+    /// Il doit passer par une valeur effectivement lue. Un compteur incrémenté par
+    /// le minuteur ne redessine rien : SwiftUI n'invalide une vue que sur les
+    /// valeurs dont son corps dépend, et une variable écrite sans être lue n'en
+    /// fait pas partie.
+    @State private var granted = GrantedPermissions()
+
     @State private var trial = ""
     @FocusState private var trialFocused: Bool
 
@@ -75,9 +85,21 @@ struct OnboardingView: View {
             footer
         }
         .frame(width: 540, height: 520)
+        .onAppear(perform: refreshPermissions)
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            pulse &+= 1
+            refreshPermissions()
         }
+    }
+
+    /// Le relevé n'est réécrit que s'il a changé : une écriture par seconde
+    /// redessinerait la fenêtre pour rien pendant tout le temps qu'elle est ouverte.
+    private func refreshPermissions() {
+        let current = GrantedPermissions(
+            microphone: controller.microphoneGranted,
+            accessibility: controller.accessibilityGranted,
+            inputMonitoring: controller.inputMonitoringGranted
+        )
+        if current != granted { granted = current }
     }
 
     // MARK: - Progression
@@ -112,21 +134,32 @@ struct OnboardingView: View {
                 symbol: "mic.fill",
                 title: "Microphone",
                 detail: "Sans elle, aucune dictée n'est possible.",
-                granted: controller.microphoneGranted,
-                action: { Task { _ = await PermissionGuard.requestMicrophone() } }
+                granted: granted.microphone,
+                action: {
+                    Task {
+                        // Une fois le micro refusé, `requestAccess` ne repose plus la
+                        // question : elle rend `false` sans rien afficher, et le bouton
+                        // passerait pour cassé. Les deux lignes suivantes ouvrent déjà
+                        // les Réglages dans ce cas, celle-ci le fait aussi.
+                        let accepted = await PermissionGuard.requestMicrophone()
+                        if !accepted { PermissionGuard.openSettings(for: .microphone) }
+                        refreshPermissions()
+                    }
+                }
             )
 
             PermissionRow(
                 symbol: "hand.raised.fill",
                 title: "Accessibilité",
                 detail: "Elle autorise le collage automatique. Sans elle, le texte est copié et il faut le coller à la main.",
-                granted: controller.accessibilityGranted,
+                granted: granted.accessibility,
                 action: {
                     // La fenêtre système n'apparaît qu'une fois par signature ; ensuite
                     // seul le panneau des Réglages permet de revenir en arrière.
                     if !PermissionGuard.hasAccessibility(prompting: true) {
                         PermissionGuard.openSettings(for: .accessibility)
                     }
+                    refreshPermissions()
                 }
             )
 
@@ -134,15 +167,16 @@ struct OnboardingView: View {
                 symbol: "keyboard",
                 title: "Surveillance de l'entrée",
                 detail: "Elle autorise la lecture du raccourci, y compris la distinction entre les touches de gauche et de droite. Sans elle, la dictée ne se déclenche que depuis la barre des menus.",
-                granted: controller.inputMonitoringGranted,
+                granted: granted.inputMonitoring,
                 action: {
                     if !PermissionGuard.requestInputMonitoring() {
                         PermissionGuard.openSettings(for: .inputMonitoring)
                     }
+                    refreshPermissions()
                 }
             )
 
-            if !controller.accessibilityGranted {
+            if !granted.accessibility {
                 Button("Continuer sans coller automatiquement") {
                     controller.preferences.autoPaste = false
                     step = 1
@@ -241,7 +275,7 @@ struct OnboardingView: View {
                 if step < 2 {
                     Button("Continuer") { step += 1 }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(step == 0 && !controller.microphoneGranted)
+                        .disabled(step == 0 && !granted.microphone)
                 } else {
                     Button("Terminer", action: finish)
                         .keyboardShortcut(.defaultAction)
@@ -254,6 +288,13 @@ struct OnboardingView: View {
 }
 
 // MARK: - Éléments
+
+/// Les trois autorisations telles qu'elles étaient au dernier relevé.
+private struct GrantedPermissions: Equatable {
+    var microphone = false
+    var accessibility = false
+    var inputMonitoring = false
+}
 
 private struct Title: View {
     let text: String
