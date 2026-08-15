@@ -80,6 +80,20 @@ final class WhisperMLXEngine: TranscriptionEngine {
         await session.availableModels()
     }
 
+    /// Démarre le démon et charge le modèle sans rien transcrire.
+    ///
+    /// Le démon est maintenu en vie pour ne pas recharger le modèle à chaque dictée,
+    /// mais il n'était démarré qu'à la première : elle payait donc l'import de
+    /// `mlx_whisper` et le chargement des poids. Mesuré sur `large-v3-turbo`, quatre
+    /// secondes avant le premier texte contre une demie ensuite.
+    ///
+    /// Le correcteur Ollama est déjà préchargé au lancement pour cette raison exacte.
+    /// Le moteur de transcription le mérite d'autant plus qu'il est sur le chemin de
+    /// la toute première dictée, celle où l'on juge l'application.
+    func warmUp() async {
+        await session.warmUp()
+    }
+
     func shutdown() async {
         await session.shutdown()
     }
@@ -159,6 +173,14 @@ private actor Session {
             return [WhisperMLXEngine.defaultModel]
         }
         return models
+    }
+
+    /// Un démon qui refuse de démarrer n'est pas signalé ici : l'absence de
+    /// `mlx-whisper` se dira au premier usage réel, avec le message qui convient.
+    func warmUp() async {
+        guard let daemon = try? daemonInstance() else { return }
+        guard (try? await daemon.send(["cmd": "load", "model": model])) != nil else { return }
+        Log.engine.notice("modèle Whisper préchargé : \(self.model, privacy: .public)")
     }
 
     func reset() {

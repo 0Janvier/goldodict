@@ -640,6 +640,14 @@ final class DictationController {
             await corrector.warmUp()
         }
 
+        // Le moteur de transcription mérite le même égard, et plus encore : il est
+        // sur le chemin de la première dictée, celle où l'on juge l'application.
+        // Seul celui qui est en service est préchauffé, il serait absurde de lancer
+        // un démon Python pour un utilisateur resté sur le moteur d'Apple.
+        if preferences.engineIdentifier == whisperEngine.identifier {
+            Task { [whisperEngine] in await whisperEngine.warmUp() }
+        }
+
         // Modèle Whisper et moteur retenus lors de la session précédente.
         if preferences.whisperModel != whisperEngine.model {
             whisperEngine = WhisperMLXEngine(model: preferences.whisperModel)
