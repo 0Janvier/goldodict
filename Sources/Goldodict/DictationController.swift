@@ -625,9 +625,9 @@ final class DictationController {
 
     /// Enregistre le raccourci global. À appeler une fois l'application lancée.
     func activate(trigger: HotkeyTrigger? = nil) {
-        hotkey.onEvent = { [weak self] isDown in
+        hotkey.onEvent = { [weak self] isDown, at in
             MainActor.assumeIsolated {
-                self?.handleHotkey(isDown: isDown)
+                self?.handleHotkey(isDown: isDown, at: at)
             }
         }
 
@@ -731,10 +731,11 @@ final class DictationController {
 
     // MARK: - Geste de déclenchement
 
-    private func handleHotkey(isDown: Bool) {
-        // Horloge monotone : insensible aux changements d'heure système.
-        let now = ProcessInfo.processInfo.systemUptime
-        let decision = isDown ? resolver.keyDown(at: now) : resolver.keyUp(at: now)
+    /// - Parameter at: instant du geste, relevé par le moniteur au moment où
+    ///   l'événement est survenu. Le relever ici fausserait la durée d'appui du
+    ///   temps de remise, et un tapotement bref serait pris pour un appui maintenu.
+    private func handleHotkey(isDown: Bool, at: TimeInterval) {
+        let decision = isDown ? resolver.keyDown(at: at) : resolver.keyUp(at: at)
 
         Log.hotkey.debug("décision : \(String(describing: decision), privacy: .public)")
 
@@ -808,14 +809,6 @@ final class DictationController {
             "profil \(self.activeProfile.name, privacy: .public) pour \(frontmost ?? "application inconnue", privacy: .public)"
         )
 
-        // Avant le gel du vocabulaire : le dossier détecté doit nourrir cette
-        // dictée-ci, pas la suivante.
-        if preferences.dossierAutoDetect {
-            autoDetectDossier(for: application)
-        }
-
-        observeLastInsertionIfPossible(frontmost: frontmost)
-
         let relay = BufferRelay()
         self.relay = relay
         capture.onBuffer = { buffer in relay.push(buffer) }
@@ -831,14 +824,28 @@ final class DictationController {
             return
         }
 
-        drawQuote()
-
         lastFailure = nil
         state = .recording(mode)
         play(.start)
         captureStartedAt = Date()
-        if activeDossier != nil, dossierSessionStart == nil { dossierSessionStart = captureStartedAt }
+        drawQuote()
         Log.audio.notice("capture démarrée (\(String(describing: mode), privacy: .public))")
+
+        // Les lectures d'Accessibilité viennent après l'ouverture du micro, et non
+        // avant. Chacune s'accorde un quart de seconde d'attente avant d'abandonner
+        // (`AXUIElementSetMessagingTimeout`), et il y en a plusieurs : tout ce qui
+        // était dit pendant ce temps se perdait, alors que le premier mot est
+        // précisément ce qu'on tient à ne pas perdre.
+        //
+        // Rien n'est sacrifié à les décaler. Le relais conserve les tampons produits
+        // pendant qu'elles s'exécutent, et le vocabulaire n'est gelé que plus bas :
+        // le dossier détecté nourrit toujours cette dictée-ci, pas la suivante.
+        if preferences.dossierAutoDetect {
+            autoDetectDossier(for: application)
+        }
+        observeLastInsertionIfPossible(frontmost: frontmost)
+
+        if activeDossier != nil, dossierSessionStart == nil { dossierSessionStart = captureStartedAt }
 
         let engine = self.engine
         let locale = self.locale
