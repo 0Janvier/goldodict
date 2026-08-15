@@ -117,8 +117,19 @@ final class DictationController {
     @ObservationIgnored
     private var engine: TranscriptionEngine
 
+    /// Identifiant du moteur en service, suivi par l'observation.
+    ///
+    /// `engine` en est exclu, et à juste titre : c'est un objet, pas une valeur.
+    /// Mais l'interface a besoin de savoir lequel est en service, et une propriété
+    /// calculée par-dessus un stockage exclu ne notifie rien. Les boutons du choix
+    /// de moteur restaient donc figés sur celui du lancement, dans la fenêtre
+    /// d'accueil comme dans les réglages et le panneau du menu, alors même que la
+    /// sélection était prise en compte et écrite dans les préférences.
+    private(set) var currentEngineIdentifier: String
+
     init() {
         engine = appleEngine
+        currentEngineIdentifier = appleEngine.identifier
         // La pastille lit le niveau à sa propre cadence plutôt que de le recevoir :
         // la capture le produit sur un thread temps réel, où le moindre passage par
         // la boucle principale serait payé en craquements.
@@ -130,6 +141,7 @@ final class DictationController {
     func select(engine newEngine: TranscriptionEngine, force: Bool = false) {
         guard !state.isBusy, force || newEngine.identifier != engine.identifier else { return }
         engine = newEngine
+        currentEngineIdentifier = newEngine.identifier
         audioFormat = nil
         Log.engine.notice("moteur sélectionné : \(newEngine.identifier, privacy: .public)")
 
@@ -138,8 +150,6 @@ final class DictationController {
             await self?.cache(audioFormat: format)
         }
     }
-
-    var currentEngineIdentifier: String { engine.identifier }
 
     /// Langue de dictée. Le français est le seul usage prévu, mais le moteur Apple
     /// exige une locale explicite et le choix sera exposé dans les réglages.

@@ -205,7 +205,8 @@ struct OnboardingView: View {
             EngineCard(
                 title: controller.whisperEngine.displayName,
                 detail: "Transcrit une fois la phrase finie, avec une meilleure tenue sur le vocabulaire juridique. Compte quelques secondes de plus.",
-                selected: controller.currentEngineIdentifier == "whisper-mlx"
+                selected: controller.currentEngineIdentifier == "whisper-mlx",
+                unavailable: WhisperMLXEngine.unavailabilityReason
             ) {
                 controller.selectEngine(identifier: "whisper-mlx")
             }
@@ -363,6 +364,10 @@ private struct EngineCard: View {
     let title: String
     let detail: String
     let selected: Bool
+    /// Ce qui empêche ce moteur de tourner ici, `nil` s'il est prêt. Proposer un
+    /// moteur qu'on ne peut pas lancer revient à laisser l'utilisateur découvrir
+    /// l'absence à sa première dictée, quand il est trop tard pour la rattraper.
+    var unavailable: String?
     let action: () -> Void
 
     var body: some View {
@@ -376,6 +381,13 @@ private struct EngineCard: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let unavailable {
+                        Label(unavailable, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -392,5 +404,7 @@ private struct EngineCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(unavailable != nil)
+        .opacity(unavailable == nil ? 1 : 0.65)
     }
 }

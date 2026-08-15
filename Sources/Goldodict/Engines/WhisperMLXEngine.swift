@@ -28,6 +28,21 @@ final class WhisperMLXEngine: TranscriptionEngine {
 
     static let defaultModel = "mlx-community/whisper-large-v3-turbo"
 
+    /// Le moteur peut-il tourner sur cette machine ?
+    ///
+    /// `AppleSpeechEngine` expose déjà `isAvailable`, et le correcteur d'Apple sa
+    /// raison d'indisponibilité. Sans l'équivalent ici, l'interface propose Whisper
+    /// sans savoir s'il est installable, et l'absence ne se découvre qu'à la
+    /// première dictée, sous forme d'erreur et plusieurs écrans plus loin.
+    static var isAvailable: Bool {
+        FileManager.default.isExecutableFile(atPath: Daemon.interpreter)
+    }
+
+    /// Ce qui manque, dit à qui doit l'installer. `nil` quand tout est en place.
+    static var unavailabilityReason: String? {
+        isAvailable ? nil : "mlx-whisper n'est pas installé — pipx install mlx-whisper"
+    }
+
     static func shortName(of repository: String) -> String {
         repository.split(separator: "/").last.map(String.init)?
             .replacingOccurrences(of: "whisper-", with: "") ?? repository
