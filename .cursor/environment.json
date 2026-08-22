@@ -1,0 +1,5 @@
+{
+  "name": "Goldodict (Swift core)",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh"
+}
