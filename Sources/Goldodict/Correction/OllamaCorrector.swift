@@ -95,7 +95,7 @@ final class OllamaCorrector: TextCorrector {
         guard let response = payload["response"] as? String else {
             throw CorrectionError.failed("réponse Ollama illisible")
         }
-        return Self.stripDecoration(from: response)
+        return CorrectionPrompt.stripDecoration(from: response)
     }
 
     private func post(_ body: [String: Any], timeout: TimeInterval) async throws -> [String: Any] {
@@ -116,22 +116,5 @@ final class OllamaCorrector: TextCorrector {
         } catch let error as URLError where error.code == .timedOut {
             throw CorrectionError.timedOut
         }
-    }
-
-    /// Retire les ornements que les modèles ajoutent malgré la consigne : guillemets
-    /// d'encadrement, préambule, blocs de raisonnement résiduels.
-    static func stripDecoration(from response: String) -> String {
-        var text = response.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let range = text.range(of: "</think>") {
-            text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        let pairs: [(Character, Character)] = [("\"", "\""), ("«", "»"), ("“", "”")]
-        for (open, close) in pairs where text.first == open && text.last == close && text.count > 2 {
-            text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        return text
     }
 }

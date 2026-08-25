@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import GoldodictCore
 
 /// Moteur Whisper, accéléré par MLX sur puce Apple.
 ///
@@ -178,7 +179,11 @@ private actor Session {
                 response["error"] as? String ?? "échec de la transcription Whisper"
             )
         }
-        return (response["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = (response["text"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Whisper peut répéter l'`initial_prompt` (lexique + dossier) en tête de
+        // transcription : ce vocabulaire « outil » partait alors dans le collage.
+        return PromptEcho.strip(raw, prompt: prompt)
     }
 
     func availableModels() async -> [String] {
