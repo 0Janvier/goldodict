@@ -140,9 +140,26 @@ Une correction jugée **infidèle** n'entraîne en revanche aucune seconde tenta
 
 **Mesure sur cette machine** : `qwen3:8b` répond en 1,6 s à chaud contre 7,8 s à froid, dont 6,1 s de chargement. D'où le préchargement au lancement — sans lui, la première correction de la journée dépasserait le délai pour rien.
 
-### Le profil est arrêté à l'enfoncement de la touche
+### Le collage attend le bon contenu, pas seulement un compteur (v2.10.4)
 
-`NSWorkspace.shared.frontmostApplication` est relevé dans `beginCapture`, jamais dans `deliver`. Entre les deux, l'application au premier plan a pu changer, et le texte serait alors traité selon les règles d'une fenêtre qui n'est plus la cible.
+`TextInjector` écrit le texte dicté dans le presse-papiers général puis simule ⌘V.
+Pour ne pas coller l'ancien contenu, il attendait que `changeCount` ait bougé.
+
+**Piège** : `clearContents()` incrémente déjà ce compteur. Attendre « au-delà de la
+valeur d'avant le clear » réussissait immédiatement, presse-papiers encore vide ou
+ancien contenu encore visible pour l'application cible — Electron (Cursor, VS Code)
+en tête. Le collage repartait alors avec ce qu'il y avait avant la dictée : un
+extrait d'interface, un journal d'outil, un HTML riche encore en cache.
+
+La correction relève le compteur *après* le clear, n'écrit qu'un item texte brut,
+vérifie que `string(forType: .string)` est bien le texte dicté avant d'émettre ⌘V,
+et laisse 500 ms avant une éventuelle restauration du presse-papiers.
+
+Second piège voisin : Whisper, nourri du lexique via `initial_prompt`, peut
+*régénérer* ces termes en tête de transcription. `PromptEcho` les élague avant le
+pipeline, pour que le vocabulaire de l'outil ne reparte pas dans le document.
+
+
 
 ### Bindings sur une source de vérité, pas sur une copie
 

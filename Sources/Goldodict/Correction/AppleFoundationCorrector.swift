@@ -92,7 +92,7 @@ private actor SessionHolder {
                 to: CorrectionPrompt.prompt(for: text),
                 options: options
             )
-            return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return CorrectionPrompt.stripDecoration(from: response.content)
         } catch let error as LanguageModelSession.GenerationError {
             // Une session ayant refusé un contenu reste marquée : on la jette pour
             // que la dictée suivante reparte sur une session saine.

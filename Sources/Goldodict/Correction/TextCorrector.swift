@@ -65,4 +65,35 @@ enum CorrectionPrompt {
     static func prompt(for text: String) -> String {
         "Texte dicté à corriger :\n\n\(text)"
     }
+
+    /// Retire les ornements que les modèles ajoutent malgré la consigne : guillemets
+    /// d'encadrement, préambule, blocs de raisonnement résiduels.
+    static func stripDecoration(from response: String) -> String {
+        var text = response.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let range = text.range(of: "</think>") {
+            text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Préambules fréquents : le modèle répète l'amorce du prompt ou annonce
+        // sa réponse. Sans ça, « Texte dicté à corriger : » partait dans le document.
+        let prefixes = [
+            "Texte dicté à corriger :",
+            "Texte corrigé :",
+            "Voici le texte corrigé :",
+            "Voici la correction :",
+        ]
+        for prefix in prefixes {
+            if let range = text.range(of: prefix, options: [.caseInsensitive, .anchored]) {
+                text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        let pairs: [(Character, Character)] = [("\"", "\""), ("«", "»"), ("“", "”")]
+        for (open, close) in pairs where text.first == open && text.last == close && text.count > 2 {
+            text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return text
+    }
 }

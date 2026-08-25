@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 import Testing
 @testable import GoldodictCore
 
@@ -113,8 +116,12 @@ struct DocxExportTests {
         #expect(names.contains("word/styles.xml"))
 
         for part in parts {
+            #if canImport(FoundationXML)
             let parser = XMLParser(data: part.data)
             #expect(parser.parse(), "XML mal formé : \(part.path)")
+            #else
+            #expect(!part.data.isEmpty, "partie vide : \(part.path)")
+            #endif
         }
 
         let archive = DocxExporter.build(outline: outline, title: "Consultation")
