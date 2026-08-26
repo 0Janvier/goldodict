@@ -177,5 +177,6 @@ log stream --predicate 'subsystem == "fr.sztulman.goldodict"' --level debug
 | `sidecar/` | Démon Python pour Whisper MLX |
 | `design/` | Icône vectorielle, et sa déclinaison pour les petites tailles |
 | `scripts/make_app.sh` | Construction du bundle, signature, installation |
+| `scripts/make_dmg.sh` | Même chose, puis emballage DMG pour la release |
 | `scripts/make_icon.sh` | Rendu de `Resources/AppIcon.icns` depuis le vectoriel |
 | `docs/ARCHITECTURE.md` | Décisions de conception et pièges rencontrés |
