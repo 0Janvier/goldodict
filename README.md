@@ -136,10 +136,11 @@ Les marques simples sont désactivables dans les réglages : en droit, « le poi
 **Depuis les sources** :
 
 ```bash
-./scripts/make_app.sh
+./scripts/make_app.sh          # bundle signé → /Applications
+./scripts/make_dmg.sh          # idem + Goldodict_<version>_<arch>.dmg
 ```
 
-Le script compile, signe avec l'identité Developer ID et installe dans `/Applications`. Au premier lancement, autoriser le **Microphone**, l'**Accessibilité** puis la **Surveillance de l'entrée** dans Réglages Système > Confidentialité et sécurité.
+`make_app.sh` compile, signe avec l'identité Developer ID et installe dans `/Applications`. `make_dmg.sh` enchaîne la même chose puis emballe un DMG au format des releases GitHub. Au premier lancement, autoriser le **Microphone**, l'**Accessibilité** puis la **Surveillance de l'entrée** dans Réglages Système > Confidentialité et sécurité.
 
 Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas collé. Sans la Surveillance de l'entrée, le raccourci global ne répond pas et la dictée ne se lance que depuis la barre des menus. Ces deux défauts sont silencieux par nature : ils sont donc signalés dans le menu, dans les réglages et dans la fenêtre d'accueil.
 
