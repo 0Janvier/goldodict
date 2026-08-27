@@ -112,7 +112,7 @@ struct MenuPanel: View {
         switch controller.state {
         case .idle: return .green
         case .recording: return .red
-        case .transcribing, .correcting, .injecting: return .accentColor
+        case .transcribing, .correcting, .injecting, .reviewing: return .accentColor
         case .inserted(let insertion): return insertion.note == nil ? .green : .orange
         case .failed: return .orange
         }

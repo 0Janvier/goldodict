@@ -231,6 +231,7 @@ private struct StatusLine: View {
 private struct DictationSettings: View {
     let controller: DictationController
     @State private var whisperModels: [String] = []
+    @State private var inputDevices: [AudioDevices.InputDevice] = []
 
     var body: some View {
         Form {
@@ -239,6 +240,27 @@ private struct DictationSettings: View {
                 Text("Appui bref : la dictée bascule en marche puis en arrêt. Appui maintenu : elle s'arrête au relâchement.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Microphone") {
+                Picker("Entrée", selection: inputDeviceBinding) {
+                    Text("Par défaut (\(AudioDevices.defaultInputName ?? "système"))")
+                        .tag(String?.none)
+                    ForEach(inputDevices) { device in
+                        Text(device.name).tag(String?.some(device.uid))
+                    }
+                }
+                Text("Sans choix, Goldodict écoute l'entrée système. Un câble virtuel (BlackHole, une visio) capture alors du silence.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Langue") {
+                Picker("Langue de dictée", selection: localeBinding) {
+                    Text("Français").tag("fr_FR")
+                    Text("English").tag("en_US")
+                }
+                .pickerStyle(.radioGroup)
             }
 
             Section("Moteur de transcription") {
@@ -267,7 +289,8 @@ private struct DictationSettings: View {
                 ))
                 Toggle("Coller automatiquement dans l'application active", isOn: autoPasteBinding)
                 Toggle("Restaurer le presse-papiers après collage", isOn: restoreBinding)
-                Text("Sans collage automatique, le texte dicté reste dans le presse-papiers et se colle par ⌘V.")
+                Toggle("Sons de début et de fin de dictée", isOn: soundBinding)
+                Text("Sans collage automatique, le texte dicté reste dans le presse-papiers et se colle par ⌘V. Les sons (Tink, Pop) se coupent en audience ou en visio.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -277,7 +300,31 @@ private struct DictationSettings: View {
             }
         }
         .formStyle(.grouped)
-        .task { whisperModels = await controller.whisperEngine.availableModels() }
+        .task {
+            whisperModels = await controller.whisperEngine.availableModels()
+            inputDevices = AudioDevices.inputDevices()
+        }
+    }
+
+    private var inputDeviceBinding: Binding<String?> {
+        Binding(
+            get: { controller.preferences.inputDeviceUID },
+            set: { controller.applyInputDevice($0) }
+        )
+    }
+
+    private var localeBinding: Binding<String> {
+        Binding(
+            get: { controller.preferences.localeIdentifier },
+            set: { controller.preferences.localeIdentifier = $0 }
+        )
+    }
+
+    private var soundBinding: Binding<Bool> {
+        Binding(
+            get: { controller.preferences.soundCues },
+            set: { controller.preferences.soundCues = $0 }
+        )
     }
 
     private var engineBinding: Binding<String> {

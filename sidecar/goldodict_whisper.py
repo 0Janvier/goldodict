@@ -5,18 +5,19 @@ Lit des commandes JSON sur stdin, une par ligne, et répond de même sur stdout.
 Le modèle reste chargé entre deux dictées : le relancer à chaque fois coûterait
 plusieurs secondes.
 
-L'audio est reçu en PCM brut, virgule flottante 32 bits, 16 kHz, mono, écrit dans
-un fichier temporaire. Le tableau est passé directement à `mlx_whisper.transcribe`,
-ce qui court-circuite `ffmpeg` — absent de la machine et requis par l'interface en
-ligne de commande de mlx_whisper.
+L'audio est reçu en PCM brut, virgule flottante 32 bits, 16 kHz, mono, encodé
+en Base64 dans la commande JSON. Le tableau est passé directement à
+`mlx_whisper.transcribe`, ce qui court-circuite `ffmpeg` et évite tout fichier
+temporaire — l'audio ne touche pas le disque.
 
 Commandes
     {"cmd": "ping"}
     {"cmd": "models"}
     {"cmd": "load", "model": "mlx-community/whisper-large-v3-turbo"}
-    {"cmd": "transcribe", "path": "/tmp/x.f32", "language": "fr", "prompt": "..."}
+    {"cmd": "transcribe", "pcm": "<base64>", "language": "fr", "prompt": "..."}
 """
 
+import base64
 import json
 import os
 import sys
@@ -48,11 +49,16 @@ def cached_models():
     return sorted(found)
 
 
-def load_audio(path):
+def load_audio(request):
     import numpy as np
 
-    audio = np.fromfile(path, dtype=np.float32)
-    return audio
+    if pcm := request.get("pcm"):
+        raw = base64.b64decode(pcm)
+        return np.frombuffer(raw, dtype=np.float32)
+    # Ancienne voie par fichier, conservée le temps d'un cycle de mise à jour.
+    if path := request.get("path"):
+        return np.fromfile(path, dtype=np.float32)
+    return np.zeros(0, dtype=np.float32)
 
 
 def do_transcribe(request):
@@ -61,7 +67,7 @@ def do_transcribe(request):
     model = request.get("model") or _state["model"] or DEFAULT_MODEL
     _state["model"] = model
 
-    audio = load_audio(request["path"])
+    audio = load_audio(request)
     if audio.size == 0:
         return {"ok": True, "text": "", "seconds": 0.0}
 

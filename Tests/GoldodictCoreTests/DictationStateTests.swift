@@ -15,7 +15,9 @@ struct DictationStateTests {
         #expect(DictationState.recording(.toggle).isBusy)
         #expect(DictationState.recording(.pushToTalk).isBusy)
         #expect(DictationState.transcribing.isBusy)
+        #expect(DictationState.correcting.isBusy)
         #expect(DictationState.injecting.isBusy)
+        #expect(DictationState.reviewing.isBusy)
     }
 
     @Test("Les deux modes de déclenchement portent des libellés distincts")

@@ -72,6 +72,24 @@ public struct DocumentOutlineBuilder: Sendable {
 
     public init() {}
 
+    /// Reprend un plan persisté : le nœud ouvert est le plus profond du dernier
+    /// rameau, pour que la dictée suivante continue là où elle s'était arrêtée.
+    public init(restoring outline: DocumentOutline) {
+        self.outline = outline
+        self.currentPath = Self.lastPath(in: outline.sections)
+    }
+
+    private static func lastPath(in sections: [OutlineNode]) -> [Int] {
+        guard !sections.isEmpty else { return [] }
+        var path = [sections.count - 1]
+        var node = sections[sections.count - 1]
+        while let last = node.children.last {
+            path.append(node.children.count - 1)
+            node = last
+        }
+        return path
+    }
+
     public mutating func append(_ tokens: [DocumentToken]) {
         // La capture d'intitulé ne survit jamais au segment qui l'a ouverte.
         capturingHeading = false

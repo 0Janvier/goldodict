@@ -1,4 +1,5 @@
 import Foundation
+import GoldodictCore
 
 /// Correcteur de repli, servi par Ollama sur la machine.
 ///

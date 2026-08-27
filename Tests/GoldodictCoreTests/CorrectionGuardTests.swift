@@ -66,15 +66,38 @@ struct CorrectionGuardTests {
         #expect(verdict.retention == 1.0)
     }
 
-    @Test("Un mot de sens substitué fait chuter la conservation")
-    func meaningSubstitutionIsCaught() {
+    @Test("Un mot de sens substitué est refusé, même sur une phrase courte")
+    func meaningSubstitutionIsRejected() {
         // « était expiré » devient « semblait expiré » : glissement typique et
-        // lourd de conséquences, invisible à la relecture rapide.
+        // lourd de conséquences. Sur quatre mots, la conservation vaut 0,75 —
+        // pile le seuil du sac de mots. L'alignement doit quand même refuser.
         let raw = "le delai etait expire"
         let corrected = "le délai semblait expiré"
 
         let verdict = guardRail.evaluate(raw: raw, corrected: corrected)
-        #expect(verdict.retention < 1.0)
+        #expect(!verdict.accepted)
+        #expect(verdict.reason?.contains("substitution de sens") == true)
+    }
+
+    @Test("Une substitution de sens au milieu d'une phrase longue est refusée")
+    func meaningSubstitutionInLongSentenceIsRejected() {
+        let raw = "la requete est irrecevable parce que le delai de deux mois etait expire a la date de la saisine"
+        let corrected = "La requête est irrecevable parce que le délai de deux mois semblait expiré à la date de la saisine."
+
+        let verdict = guardRail.evaluate(raw: raw, corrected: corrected)
+        #expect(!verdict.accepted)
+        #expect(verdict.reason?.contains("substitution de sens") == true)
+    }
+
+    @Test("Un accord de nombre n'est pas une substitution de sens")
+    func agreementIsAccepted() {
+        // Un seul mot change de nombre : le sac de mots reste à 0,75, pile le
+        // seuil. Sans l'alignement, on ne saurait pas que c'est un accord.
+        let raw = "le delai etait expire"
+        let corrected = "le délai étaient expiré"
+
+        let verdict = guardRail.evaluate(raw: raw, corrected: corrected)
+        #expect(verdict.accepted)
     }
 
     @Test("Un texte brut vide est refusé")
@@ -89,11 +112,12 @@ struct CorrectionGuardTests {
 
     @Test("Les seuils sont ajustables")
     func thresholdsAreConfigurable() {
+        // Des mots ajoutés, sans substitution : le sac de mots tranche, pas l'alignement.
         let permissive = CorrectionGuard(
             thresholds: .init(retention: 0.05, lengthRange: 0.1...5.0)
         )
         let raw = "la requete est irrecevable"
-        let corrected = "Le recours ne prospérera pas devant la juridiction saisie."
+        let corrected = "La requête est tout à fait irrecevable, cela va sans dire."
 
         #expect(permissive.evaluate(raw: raw, corrected: corrected).accepted)
         #expect(!guardRail.evaluate(raw: raw, corrected: corrected).accepted)

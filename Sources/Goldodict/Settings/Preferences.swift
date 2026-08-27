@@ -35,12 +35,17 @@ final class Preferences {
         static let styleObservationAuto = "learning.observeFieldAuto"
         static let dossierAutoDetect = "goldocab.autoDetect"
         static let reviewBeforePaste = "output.reviewBeforePaste"
+        static let soundCues = "output.soundCues"
+        static let inputDeviceUID = "audio.inputDeviceUID"
+        static let localeIdentifier = "dictation.locale"
 
         static let all = [
             engine, whisperModel, hotkeyCode, hotkeyModifiers, autoPaste, restorePasteboard,
             holdThreshold, simpleMarks, lineBreaks, compoundMarks, capitalize,
-            correctionEnabled, correctionRetention, ollamaModel, lineFormat, hotkeyTrigger,
+            correctionEnabled, correctionRetention, ollamaModel, correctionPrimary, correctionFallback,
+            lineFormat, hotkeyTrigger,
             styleLearning, styleObservationAuto, dossierAutoDetect, reviewBeforePaste,
+            soundCues, inputDeviceUID, localeIdentifier,
         ]
     }
 
@@ -76,6 +81,8 @@ final class Preferences {
             Key.styleObservationAuto: true,
             Key.dossierAutoDetect: true,
             Key.reviewBeforePaste: true,
+            Key.soundCues: true,
+            Key.localeIdentifier: "fr_FR",
         ])
     }
 
@@ -126,6 +133,25 @@ final class Preferences {
     var dossierAutoDetect: Bool {
         get { access(keyPath: \.dossierAutoDetect); return defaults.bool(forKey: Key.dossierAutoDetect) }
         set { withMutation(keyPath: \.dossierAutoDetect) { defaults.set(newValue, forKey: Key.dossierAutoDetect) } }
+    }
+
+    /// Sons de début et de fin de dictée (Tink / Pop).
+    var soundCues: Bool {
+        get { access(keyPath: \.soundCues); return defaults.object(forKey: Key.soundCues) as? Bool ?? true }
+        set { withMutation(keyPath: \.soundCues) { defaults.set(newValue, forKey: Key.soundCues) } }
+    }
+
+    /// Périphérique d'entrée choisi. `nil` : celui que macOS désigne par défaut.
+    var inputDeviceUID: String? {
+        get { access(keyPath: \.inputDeviceUID); return defaults.string(forKey: Key.inputDeviceUID) }
+        set { withMutation(keyPath: \.inputDeviceUID) { defaults.set(newValue, forKey: Key.inputDeviceUID) } }
+    }
+
+    /// Locale de dictée. Le français est l'usage prévu ; l'anglais est offert
+    /// parce que le moteur Apple l'exige explicitement.
+    var localeIdentifier: String {
+        get { access(keyPath: \.localeIdentifier); return defaults.string(forKey: Key.localeIdentifier) ?? "fr_FR" }
+        set { withMutation(keyPath: \.localeIdentifier) { defaults.set(newValue, forKey: Key.localeIdentifier) } }
     }
 
     /// Montrer la dictée dans la fenêtre de relecture avant de la coller.

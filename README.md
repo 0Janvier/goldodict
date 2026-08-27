@@ -150,7 +150,7 @@ Sans l'Accessibilité, le texte est copié dans le presse-papiers mais n'est pas
 - macOS 26 ou ultérieur (framework `Speech` avec `SpeechAnalyzer`)
 - Pour le moteur Whisper : `mlx-whisper` installé via pipx, à `~/.local/pipx/venvs/mlx-whisper/bin/python`
 
-`ffmpeg` n'est **pas** nécessaire : l'audio est transmis au démon en PCM brut et passé directement à `mlx_whisper.transcribe`, ce qui contourne l'interface en ligne de commande.
+`ffmpeg` n'est **pas** nécessaire : l'audio est transmis au démon en PCM brut (Base64 dans le tube, jamais un fichier) et passé directement à `mlx_whisper.transcribe`, ce qui contourne l'interface en ligne de commande.
 
 ## Développement
 

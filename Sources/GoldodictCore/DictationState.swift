@@ -43,6 +43,9 @@ public enum DictationState: Equatable, Sendable {
     /// Le texte transcrit passe au correcteur local.
     case correcting
     case injecting
+    /// La dictée attend dans la fenêtre de relecture. Occupé : une relance
+    /// Speech ou un second raccourci détruirait le texte encore à l'écran.
+    case reviewing
     /// Le texte est arrivé dans l'application visée.
     case inserted(Insertion)
     case failed(String)
@@ -50,7 +53,7 @@ public enum DictationState: Equatable, Sendable {
     public var isBusy: Bool {
         switch self {
         case .idle, .inserted, .failed: return false
-        case .recording, .transcribing, .correcting, .injecting: return true
+        case .recording, .transcribing, .correcting, .injecting, .reviewing: return true
         }
     }
 
@@ -77,6 +80,7 @@ public enum DictationState: Equatable, Sendable {
         case .transcribing: return "waveform"
         case .correcting: return "wand.and.sparkles"
         case .injecting: return "text.cursor"
+        case .reviewing: return "pencil.and.list.clipboard"
         case .inserted: return "checkmark.circle"
         case .failed: return "exclamationmark.triangle"
         }
@@ -91,6 +95,7 @@ public enum DictationState: Equatable, Sendable {
         case .transcribing: return "Transcription…"
         case .correcting: return "Relecture…"
         case .injecting: return "Insertion…"
+        case .reviewing: return "Relecture à l'écran"
         case .inserted(let insertion): return "\(insertion.summary) inséré"
         case .failed(let message): return "Erreur : \(message)"
         }
@@ -105,6 +110,7 @@ public enum DictationState: Equatable, Sendable {
         case .transcribing: return "Transcription"
         case .correcting: return "Relecture"
         case .injecting: return "Insertion"
+        case .reviewing: return "Relecture"
         case .inserted(let insertion): return insertion.note ?? insertion.summary
         case .failed(let message): return message
         }

@@ -38,6 +38,17 @@ final class RecordingOverlay {
         didSet { model.quote = quote }
     }
 
+    /// Texte provisoire du moteur, poussé depuis le contrôleur. Whisper n'en
+    /// produit pas : la réplique reste alors le seul libellé pendant l'écoute.
+    var partialText: String? {
+        didSet { model.partialText = partialText }
+    }
+
+    /// Nom du micro ouvert, posé au démarrage de la capture.
+    var inputDeviceName: String? {
+        didSet { model.inputDeviceName = inputDeviceName }
+    }
+
     private var panel: NSPanel?
     private let model = OverlayModel()
     private var ticker: Task<Void, Never>?
@@ -135,13 +146,14 @@ private final class OverlayModel {
 
     var state: DictationState = .idle
     var quote: String?
+    var partialText: String?
     private(set) var bars: [Float] = Array(repeating: 0, count: OverlayModel.barCount)
     private(set) var elapsed: TimeInterval = 0
     private(set) var isSilent = false
 
-    /// Périphérique écouté au moment où le silence a été déclaré. Relevé sur le
-    /// front, pas à l'affichage : la capsule se redessine vingt fois par seconde.
-    private(set) var inputDeviceName: String?
+    /// Périphérique écouté. Posé au démarrage, ou relevé si le silence arrive
+    /// avant que le contrôleur n'ait eu le temps de le nommer.
+    var inputDeviceName: String?
 
     private var startedAt: TimeInterval = 0
     private var smoothed: Float = 0
@@ -153,7 +165,6 @@ private final class OverlayModel {
         elapsed = 0
         smoothed = 0
         isSilent = false
-        inputDeviceName = nil
         watch.begin(at: now)
         bars = Array(repeating: 0, count: Self.barCount)
     }
@@ -167,7 +178,7 @@ private final class OverlayModel {
         bars.removeFirst()
         bars.append(smoothed)
 
-        if watch.absorb(level: smoothed, at: now) {
+        if watch.absorb(level: smoothed, at: now), inputDeviceName == nil {
             inputDeviceName = AudioDevices.defaultInputName
         }
         isSilent = watch.isSilent
@@ -179,6 +190,7 @@ private final class OverlayModel {
         smoothed = 0
         isSilent = false
         inputDeviceName = nil
+        partialText = nil
     }
 }
 
@@ -220,7 +232,7 @@ private struct OverlayView: View {
                 .fill(tint)
                 .frame(width: 9, height: 9)
                 .opacity(model.isSilent ? 1 : 0.55 + Double(model.bars.last ?? 0) * 0.45)
-        case .transcribing, .correcting, .injecting:
+        case .transcribing, .correcting, .injecting, .reviewing:
             ProgressView()
                 .controlSize(.small)
                 .scaleEffect(0.7)
@@ -264,7 +276,18 @@ private struct OverlayView: View {
     /// d'un travail en cours et doivent rester factuels.
     private var title: String {
         if model.state.isRecording, model.isSilent { return silenceTitle }
-        if model.state.isRecording, let quote = model.quote, !quote.isEmpty { return quote }
+        if model.state.isRecording, let partial = model.partialText, !partial.isEmpty {
+            if let device = model.inputDeviceName, !device.isEmpty {
+                return "\(partial)\n\(device)"
+            }
+            return partial
+        }
+        if model.state.isRecording, let quote = model.quote, !quote.isEmpty {
+            if let device = model.inputDeviceName, !device.isEmpty {
+                return "\(quote)\n\(device)"
+            }
+            return quote
+        }
         if case .inserted(let insertion) = model.state, insertion.note == nil {
             return "\(insertion.summary) inséré"
         }
@@ -285,7 +308,7 @@ private struct OverlayView: View {
     private var tint: Color {
         if model.state.isRecording { return model.isSilent ? .orange : .red }
         switch model.state {
-        case .transcribing, .correcting, .injecting: return .accentColor
+        case .transcribing, .correcting, .injecting, .reviewing: return .accentColor
         case .inserted(let insertion): return insertion.note == nil ? .green : .orange
         case .failed: return .orange
         default: return .secondary

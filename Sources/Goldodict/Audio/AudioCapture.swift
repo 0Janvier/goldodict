@@ -1,4 +1,6 @@
+import AudioToolbox
 import AVFoundation
+import CoreAudio
 import Foundation
 
 enum AudioCaptureError: LocalizedError {
@@ -47,6 +49,16 @@ final class AudioCapture {
     /// Appelé depuis un thread audio temps réel : ne rien y faire de coûteux.
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
+    /// Périphérique d'entrée à ouvrir. `nil` : celui que macOS désigne par défaut.
+    /// Un changement hors capture jette le moteur : l'unité d'entrée garderait
+    /// sinon le format de l'ancien micro.
+    var preferredDeviceUID: String? {
+        didSet {
+            guard oldValue != preferredDeviceUID, !isRunning else { return }
+            discardEngine()
+        }
+    }
+
     private var engine: AVAudioEngine?
     private var configurationObserver: NSObjectProtocol?
     private var targetFormat = AudioCapture.whisperFormat
@@ -80,6 +92,7 @@ final class AudioCapture {
 
         let engine = reusableEngine()
         let input = engine.inputNode
+        applyPreferredDevice(to: input)
         let nativeFormat = input.outputFormat(forBus: 0)
 
         guard let converter = AVAudioConverter(from: nativeFormat, to: targetFormat) else {
@@ -150,7 +163,29 @@ final class AudioCapture {
     /// d'utilisation du micro ne s'allume pas : seule l'unité est mise en place.
     func warmUp() {
         guard engine == nil else { return }
-        _ = reusableEngine().inputNode.outputFormat(forBus: 0)
+        let engine = reusableEngine()
+        applyPreferredDevice(to: engine.inputNode)
+        _ = engine.inputNode.outputFormat(forBus: 0)
+    }
+
+    /// Pose le périphérique choisi sur l'unité d'entrée, avant lecture du format
+    /// natif. Sans cela, `installTap` s'accroche au micro par défaut.
+    private func applyPreferredDevice(to input: AVAudioInputNode) {
+        guard let uid = preferredDeviceUID, let deviceID = AudioDevices.id(forUID: uid) else { return }
+        guard let audioUnit = input.audioUnit else { return }
+        var id = deviceID
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            size
+        )
+        if status != noErr {
+            Log.audio.error("périphérique \(uid, privacy: .public) refusé (état \(status))")
+        }
     }
 
     private func discardEngine() {

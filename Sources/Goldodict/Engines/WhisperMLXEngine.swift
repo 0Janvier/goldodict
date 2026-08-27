@@ -6,9 +6,9 @@ import GoldodictCore
 ///
 /// Le modèle tourne dans un démon Python maintenu en vie : le charger à chaque
 /// dictée coûterait plusieurs secondes. Les échantillons sont transmis en PCM brut
-/// via un fichier temporaire, que le démon lit avec NumPy et passe directement à
-/// `mlx_whisper.transcribe`. Cette voie évite `ffmpeg`, absent de la machine et
-/// exigé par l'interface en ligne de commande de mlx_whisper.
+/// dans la commande JSON (Base64), que le démon décode avec NumPy et passe
+/// directement à `mlx_whisper.transcribe`. Cette voie évite `ffmpeg` et tout
+/// fichier temporaire : l'audio ne touche pas le disque.
 final class WhisperMLXEngine: TranscriptionEngine {
 
     let identifier = "whisper-mlx"
@@ -156,18 +156,12 @@ private actor Session {
             return ""
         }
 
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("goldodict-\(UUID().uuidString).f32")
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        try samples.withUnsafeBufferPointer { pointer in
-            let data = Data(buffer: pointer)
-            try data.write(to: url, options: .atomic)
-        }
-
+        // Le PCM reste en mémoire et traverse le tube en Base64 : aucun fichier
+        // temporaire, conformément au principe « l'audio ne touche pas le disque ».
+        let pcm = samples.withUnsafeBufferPointer { Data(buffer: $0).base64EncodedString() }
         var request: [String: Any] = [
             "cmd": "transcribe",
-            "path": url.path,
+            "pcm": pcm,
             "language": language,
             "model": model,
         ]

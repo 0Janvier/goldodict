@@ -61,7 +61,7 @@ final class DictationController {
         overlayDismissal?.cancel()
 
         switch state {
-        case .idle:
+        case .idle, .reviewing:
             overlay.hide()
         case .recording, .transcribing, .correcting, .injecting:
             overlay.show(state: state)
@@ -151,9 +151,8 @@ final class DictationController {
         }
     }
 
-    /// Langue de dictée. Le français est le seul usage prévu, mais le moteur Apple
-    /// exige une locale explicite et le choix sera exposé dans les réglages.
-    var locale = Locale(identifier: "fr_FR")
+    /// Langue de dictée, lue dans les préférences.
+    var locale: Locale { Locale(identifier: preferences.localeIdentifier) }
 
     let lexiconStore = LexiconStore()
     let repliqueStore = RepliqueStore()
@@ -280,117 +279,20 @@ final class DictationController {
     /// Vocabulaire transmis au moteur avant transcription : le lexique, enrichi
     /// des termes du dossier actif quand il y en a un.
     private var contextualStrings: [String] {
-        lexiconStore.lexicon.contextualStrings + (activeDossier?.terms ?? [])
+        lexiconStore.lexicon.contextualStrings + dossiers.contextualTerms
     }
 
-    // MARK: - Dossier actif (pont Goldocab)
-
-    private let goldocabReader = GoldocabReader()
-
-    /// Dossier Goldocab sélectionné dans le panneau. Éphémère : jamais persisté,
-    /// son vocabulaire disparaît avec lui.
-    private(set) var activeDossier: DossierContext?
-
-    /// Dossiers ouverts dans Goldocab, rafraîchis à l'ouverture du panneau.
-    private(set) var availableDossiers: [DossierContext] = []
-
-    /// Temps de dictée cumulé sur le dossier actif depuis sa sélection ou la
-    /// dernière imputation.
-    private(set) var dossierSessionSeconds: TimeInterval = 0
-    private var dossierSessionStart: Date?
+    let dossiers = DossierCoordinator()
+    let learning = LearningCoordinator()
     private var captureStartedAt: Date?
 
-    func refreshDossiers() {
-        availableDossiers = goldocabReader.activeDossiers()
-        // Le dossier actif suit la base : s'il a été clos entre-temps, il sort.
-        if let current = activeDossier,
-           !availableDossiers.contains(where: { $0.id == current.id }) {
-            selectDossier(nil)
-        }
-    }
+    var activeDossier: DossierContext? { dossiers.activeDossier }
+    var availableDossiers: [DossierContext] { dossiers.availableDossiers }
+    var dossierSessionSeconds: TimeInterval { dossiers.dossierSessionSeconds }
 
-    // MARK: - Relais de relance
-
-    private static let handoffKey = "speechRelaunchHandoff"
-
-    /// Dépose l'état éphémère qui ne doit pas se perdre dans une relance
-    /// automatique : le dossier actif et son temps non imputé. Écrit juste avant
-    /// la relance, lu et effacé au lancement suivant — ce n'est pas une
-    /// persistance, le dossier reste éphémère hors de ce cas.
-    func prepareRelaunchHandoff() {
-        guard let dossier = activeDossier else { return }
-        var payload: [String: Any] = [
-            "dossierId": NSNumber(value: dossier.id),
-            "seconds": dossierSessionSeconds,
-        ]
-        if let start = dossierSessionStart {
-            payload["start"] = start.timeIntervalSince1970
-        }
-        UserDefaults.standard.set(payload, forKey: Self.handoffKey)
-    }
-
-    /// Reprend l'état déposé par `prepareRelaunchHandoff()`, s'il y en a un.
-    private func restoreRelaunchHandoff() {
-        guard let payload = UserDefaults.standard.dictionary(forKey: Self.handoffKey) else { return }
-        UserDefaults.standard.removeObject(forKey: Self.handoffKey)
-        guard let id = (payload["dossierId"] as? NSNumber)?.int64Value else { return }
-
-        availableDossiers = goldocabReader.activeDossiers()
-        guard let dossier = availableDossiers.first(where: { $0.id == id }) else { return }
-        activeDossier = dossier
-        dossierSessionSeconds = payload["seconds"] as? Double ?? 0
-        if let start = payload["start"] as? Double {
-            dossierSessionStart = Date(timeIntervalSince1970: start)
-        }
-        Log.goldocab.notice("dossier \(dossier.code, privacy: .private) repris après relance (\(Int(self.dossierSessionSeconds)) s en cours)")
-    }
-
-    /// Temps non imputé des dossiers quittés : un basculement — surtout
-    /// automatique — ne doit jamais effacer des minutes à facturer. Le compteur
-    /// se range ici et revient quand le dossier redevient actif.
-    private var parkedSessions: [Int64: (seconds: TimeInterval, start: Date?)] = [:]
-
-    func selectDossier(_ dossier: DossierContext?) {
-        guard dossier?.id != activeDossier?.id else { return }
-
-        if let previous = activeDossier, dossierSessionSeconds > 0 {
-            parkedSessions[previous.id] = (dossierSessionSeconds, dossierSessionStart)
-        }
-        activeDossier = dossier
-        if let dossier, let parked = parkedSessions.removeValue(forKey: dossier.id) {
-            dossierSessionSeconds = parked.seconds
-            dossierSessionStart = parked.start
-        } else {
-            dossierSessionSeconds = 0
-            dossierSessionStart = nil
-        }
-
-        if let dossier {
-            Log.goldocab.notice("dossier actif : \(dossier.code, privacy: .private) (\(dossier.terms.count) termes)")
-        } else {
-            Log.goldocab.notice("aucun dossier actif")
-        }
-    }
-
-    /// Cherche un code de dossier dans le titre de la fenêtre visée et bascule
-    /// dessus. Silencieux par construction : pas de titre, pas de code, pas de
-    /// correspondance — la dictée part telle quelle.
-    private func autoDetectDossier(for application: NSRunningApplication?) {
-        guard let title = WindowTitleReader.focusedWindowTitle(of: application) else { return }
-        if availableDossiers.isEmpty {
-            availableDossiers = goldocabReader.activeDossiers()
-        }
-        var match = DossierCodeDetector.match(in: title, among: availableDossiers)
-        if match == nil, !DossierCodeDetector.codes(in: title).isEmpty {
-            // Un code est là mais absent de la liste : elle date peut-être d'avant
-            // l'ouverture du dossier dans Goldocab.
-            availableDossiers = goldocabReader.activeDossiers()
-            match = DossierCodeDetector.match(in: title, among: availableDossiers)
-        }
-        guard let match, match.id != activeDossier?.id else { return }
-        selectDossier(match)
-        Log.goldocab.notice("dossier détecté par la fenêtre : \(match.code, privacy: .private)")
-    }
+    func refreshDossiers() { dossiers.refresh() }
+    func selectDossier(_ dossier: DossierContext?) { dossiers.select(dossier) }
+    func prepareRelaunchHandoff() { dossiers.prepareRelaunchHandoff() }
 
     // MARK: - Relecture à la volée
 
@@ -443,11 +345,10 @@ final class DictationController {
             if outcome != .pasted {
                 self.state = .failed("texte copié, Accessibilité non autorisée")
             } else {
-                self.lastInsertion = LastInsertion(
+                self.learning.rememberInsertion(
                     text: text,
                     bundleIdentifier: request.bundleIdentifier,
-                    profileName: request.profileName,
-                    date: Date()
+                    profileName: request.profileName
                 )
                 self.state = .inserted(Insertion(
                     characters: text.count,
@@ -466,102 +367,38 @@ final class DictationController {
         Log.learning.debug("relecture annulée")
     }
 
-    // MARK: - Style vivant (apprentissage des corrections)
+    var styleObservationStore: StyleObservationStore { learning.store }
 
-    let styleObservationStore = StyleObservationStore()
-
-    /// La dernière insertion réussie, gardée en mémoire seule pour l'observation
-    /// du champ. Consommée à la première tentative — une insertion, une lecture.
-    private struct LastInsertion {
-        let text: String
-        let bundleIdentifier: String?
-        let profileName: String
-        let date: Date
-    }
-
-    private var lastInsertion: LastInsertion?
-    private static let observationWindow: TimeInterval = 15 * 60
-
-    /// Relit le champ de la dernière insertion et relève les retouches, sans
-    /// aucun geste de l'utilisateur. Conditions cumulatives : même application,
-    /// moins de quinze minutes, apprentissage et observation activés. Le champ lu
-    /// ne quitte jamais la mémoire — seules des paires courtes sont comptées.
-    private func observeLastInsertionIfPossible(frontmost: String?) {
-        guard preferences.styleLearningEnabled, preferences.styleObservationAuto,
-              let last = lastInsertion else { return }
-        lastInsertion = nil
-
-        guard last.bundleIdentifier == frontmost,
-              Date().timeIntervalSince(last.date) < Self.observationWindow else { return }
-
-        // Hors du chemin critique : la capture démarre sans attendre la lecture,
-        // et le champ contient encore l'ancien texte tant que la dictée parle.
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            // L'utilisateur a pu changer d'application entre l'appui et cette
-            // lecture : on revérifie le premier plan avant de toucher au champ.
-            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == last.bundleIdentifier else { return }
-            guard let field = FocusedFieldReader.focusedFieldValue(),
-                  let passage = InsertionLocator.modifiedPassage(of: last.text, in: field) else { return }
-            let count = self.submitStyleCorrection(
-                original: last.text,
-                corrected: passage,
-                profileName: last.profileName
-            )
-            if count > 0 {
-                Log.learning.notice("observation du champ : \(count) correction(s) relevée(s)")
-            }
-        }
-    }
-
-    /// Relève les corrections d'une dictée reprise à la main. Rend le nombre de
-    /// paires retenues — zéro n'est pas un échec, juste rien à apprendre.
     @discardableResult
     func submitStyleCorrection(original: String, corrected: String, profileName: String) -> Int {
-        guard preferences.styleLearningEnabled else { return 0 }
-        let before = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let after = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard before != after else { return 0 }
-
-        let pairs = StyleDiffEngine.discardingAlreadyHandled(
-            StyleDiffEngine.diff(original: before, corrected: after),
+        learning.record(
+            original: original,
+            corrected: corrected,
+            profileName: profileName,
+            enabled: preferences.styleLearningEnabled,
             lexicon: lexiconStore.lexicon
         )
-        for pair in pairs {
-            styleObservationStore.record(
-                before: pair.before,
-                after: pair.after,
-                profileName: profileName,
-                kind: StyleDiffEngine.classify(pair)
-            )
-        }
-        return pairs.count
     }
 
-    /// Les corrections récurrentes mûres pour une décision.
-    var styleProposals: [StyleObservation] {
-        styleObservationStore.observations.proposals()
-    }
+    var styleProposals: [StyleObservation] { learning.proposals }
 
     func acceptStyleProposal(_ observation: StyleObservation, as kind: StyleSuggestionKind) {
-        switch kind {
-        case .lexicon:
+        switch learning.accept(observation, as: kind) {
+        case .lexicon(let entendu, let corrige):
             var lexicon = lexiconStore.lexicon
-            lexicon.upsert(LexiconEntry(entendu: observation.before, corrige: observation.after))
+            lexicon.upsert(LexiconEntry(entendu: entendu, corrige: corrige))
             updateLexicon(lexicon)
-        case .style:
-            guard var profile = profileStore.profiles.profile(named: observation.profileName) else { break }
-            let note = StyleDiffEngine.styleInstruction(before: observation.before, after: observation.after)
+        case .style(let profileName, let note):
+            guard var profile = profileStore.profiles.profile(named: profileName) else { break }
             if !profile.styleNotes.contains(note) {
                 profile.styleNotes.append(note)
                 updateProfile(profile)
             }
         }
-        styleObservationStore.setStatus(.accepted, id: observation.id)
     }
 
     func dismissStyleProposal(_ observation: StyleObservation) {
-        styleObservationStore.setStatus(.dismissed, id: observation.id)
+        learning.dismiss(observation)
     }
 
     // MARK: - Mode document (l'Architecte)
@@ -575,31 +412,31 @@ final class DictationController {
     var isOccupied: Bool { state.isBusy || architectActive }
 
     /// Assemble une session de document, ou refuse si quelque chose tourne déjà.
-    func makeArchitectSession() -> ArchitectSession? {
+    ///
+    /// Le moteur est celui en service : Apple donne le plan au fil de la parole,
+    /// Whisper reste disponible pour le vocabulaire technique.
+    func makeArchitectSession(
+        restoring snapshot: ArchitectSnapshot? = nil,
+        persistURL: URL? = nil
+    ) -> ArchitectSession? {
         guard !isOccupied else { return nil }
         architectActive = true
         return ArchitectSession(
-            engine: whisperEngine,
+            engine: engine,
             corrector: corrector,
             pipeline: pipeline,
             contextualStrings: contextualStrings,
             locale: locale,
+            inputDeviceUID: preferences.inputDeviceUID,
+            snapshot: snapshot,
+            persistURL: persistURL,
             onRelease: { [weak self] in self?.architectActive = false }
         )
     }
 
-    /// Dépose le cumul de la session dans l'outbox Goldocab. Geste explicite,
-    /// jamais automatique : l'entrée arrive « à revoir » côté Goldocab.
     func imputeDossierSession() {
-        guard let dossier = activeDossier, dossierSessionSeconds > 0 else { return }
         do {
-            try OutboxWriter.deposit(.dictation(
-                dossier: dossier,
-                startedAt: dossierSessionStart ?? Date(),
-                duration: dossierSessionSeconds
-            ))
-            dossierSessionSeconds = 0
-            dossierSessionStart = nil
+            try dossiers.impute()
         } catch {
             Log.goldocab.error("imputation impossible : \(error.localizedDescription, privacy: .public)")
             lastFailure = "imputation : \(error.localizedDescription)"
@@ -649,7 +486,7 @@ final class DictationController {
         lexiconStore.load()
         repliqueStore.load()
         profileStore.load()
-        styleObservationStore.load()
+        learning.store.load()
         ArchitectSession.purgeStaleSessions()
 
         // L'unité d'entrée audio est mise en place tout de suite, mais pas dans la
@@ -661,7 +498,8 @@ final class DictationController {
             self?.capture.warmUp()
         }
         reloadPipeline()
-        restoreRelaunchHandoff()
+        dossiers.restoreRelaunchHandoff()
+        capture.preferredDeviceUID = preferences.inputDeviceUID
 
         // Le préchargement du modèle Ollama est déterminant : à froid, la première
         // correction demande près de huit secondes et serait abandonnée pour rien.
@@ -785,9 +623,13 @@ final class DictationController {
         }
     }
 
+    func applyInputDevice(_ uid: String?) {
+        preferences.inputDeviceUID = uid
+        capture.preferredDeviceUID = uid
+    }
+
     private func beginCapture(mode: TriggerMode) {
-        // Une session de document occupe déjà le micro et le moteur.
-        guard !architectActive else {
+        guard !isOccupied else {
             resolver.reset()
             return
         }
@@ -835,6 +677,9 @@ final class DictationController {
         }
 
         lastFailure = nil
+        overlay.inputDeviceName = AudioDevices.name(ofUID: preferences.inputDeviceUID)
+            ?? AudioDevices.defaultInputName
+        overlay.partialText = nil
         state = .recording(mode)
         play(.start)
         captureStartedAt = Date()
@@ -851,20 +696,25 @@ final class DictationController {
         // pendant qu'elles s'exécutent, et le vocabulaire n'est gelé que plus bas :
         // le dossier détecté nourrit toujours cette dictée-ci, pas la suivante.
         if preferences.dossierAutoDetect {
-            autoDetectDossier(for: application)
+            dossiers.autoDetect(for: application)
         }
-        observeLastInsertionIfPossible(frontmost: frontmost)
-
-        if activeDossier != nil, dossierSessionStart == nil { dossierSessionStart = captureStartedAt }
-
+        learning.observeLastInsertionIfPossible(
+            frontmost: frontmost,
+            enabled: preferences.styleLearningEnabled,
+            observeField: preferences.styleObservationAuto,
+            lexicon: lexiconStore.lexicon
+        )
+        if let start = captureStartedAt {
+            dossiers.markSessionStart(at: start)
+        }
         let engine = self.engine
         let locale = self.locale
         let strings = self.contextualStrings
-        // Le texte provisoire n'est plus affiché : la pastille montre le niveau sonore
-        // et la durée, qui répondent à la seule question posée pendant qu'on parle,
-        // celle de savoir si l'on est entendu. Le moteur continue de le produire, il
-        // sert au démarrage de la reconnaissance.
-        let onPartial: @Sendable (String) -> Void = { _ in }
+        let onPartial: @Sendable (String) -> Void = { text in
+            Task { @MainActor [weak self] in
+                self?.overlay.partialText = text
+            }
+        }
         opening = Task { [weak self] in
             do {
                 try await engine.start(
@@ -889,10 +739,11 @@ final class DictationController {
         capture.onBuffer = nil
         play(.stop)
         state = .transcribing
-        if activeDossier != nil, let start = captureStartedAt {
-            dossierSessionSeconds += Date().timeIntervalSince(start)
+        if let start = captureStartedAt {
+            dossiers.addCaptureDuration(from: start)
         }
         captureStartedAt = nil
+        overlay.partialText = nil
         Log.audio.debug("capture arrêtée, \(samples) échantillons accumulés")
 
         let engine = self.engine
@@ -952,7 +803,7 @@ final class DictationController {
         // Relecture à la volée : le texte s'arrête dans la fenêtre flottante,
         // le collage attendra la touche Entrée.
         if preferences.reviewBeforePaste, let presentReview {
-            state = .idle
+            state = .reviewing
             presentReview(ReviewRequest(
                 text: cleaned,
                 profileName: profile.name,
@@ -975,15 +826,11 @@ final class DictationController {
         if outcome != .pasted {
             state = .failed("texte copié, Accessibilité non autorisée")
         } else {
-            lastInsertion = LastInsertion(
+            learning.rememberInsertion(
                 text: cleaned,
                 bundleIdentifier: activeBundleIdentifier,
-                profileName: profile.name,
-                date: Date()
+                profileName: profile.name
             )
-            // Le compte de signes et le nom de l'application confirment que la dictée
-            // est arrivée là où elle était attendue. La note, quand il y en a une,
-            // signale ce qui n'a pas pu être fait sans présenter cela comme une panne.
             state = .inserted(
                 Insertion(
                     characters: cleaned.count,
@@ -1089,6 +936,7 @@ final class DictationController {
     }
 
     private func play(_ cue: Cue) {
+        guard preferences.soundCues else { return }
         NSSound(named: NSSound.Name(cue.rawValue))?.play()
     }
 }

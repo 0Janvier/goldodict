@@ -124,11 +124,15 @@ La ponctuation passe avant le lexique pour qu'une entrée de lexique puisse cont
 
 Les substitutions n'utilisent **pas** `NSRegularExpression`, incapable d'ignorer les diacritiques. `String.range(of:options:)` avec `.diacriticInsensitive` le fait nativement, et les bornes de mots sont vérifiées à la main — ce qui traite correctement l'apostrophe typographique, devant laquelle `\b` se comporte de façon inattendue.
 
+### La relecture est un état occupé
+
+`deliver` ouvrait la fenêtre flottante en remettant l'état à `idle`. Le chien de garde Speech, qui relance l'application dès que `isOccupied` est faux, pouvait alors tuer le processus : texte perdu, historique volatilisé. L'état `reviewing` compte comme occupé. Un second raccourci pendant la relecture est ignoré.
+
 ### Le garde-fou de correction est la pièce maîtresse
 
 Un modèle de langue à qui l'on demande de « corriger » peut dériver vers la reformulation. En matière juridique, remplacer « était expiré » par « semblait expiré » change la portée d'un moyen sans qu'une relecture rapide le voie.
 
-`CorrectionGuard` compare le texte corrigé au brut sur deux axes : la part des mots conservés (seuil 0,75) et le rapport des longueurs (0,6 à 1,4). Les mots sont normalisés sans casse ni diacritiques, précisément parce que rétablir les accents fait partie du travail attendu et ne doit pas compter comme une altération. Le décompte se fait en **sac de mots** et non en ensemble : un modèle qui répéterait dix fois un mot présent au brut ne doit pas passer pour fidèle.
+`CorrectionGuard` compare le texte corrigé au brut sur trois axes : la part des mots conservés (seuil 0,75), le rapport des longueurs (0,6 à 1,4), et un alignement LCS qui refuse une substitution de mot porteur — « était » / « semblait » — même quand le sac de mots reste pile au seuil. Les accords (« était » / « étaient ») et les mots-outils courts passent. Les mots sont normalisés sans casse ni diacritiques, précisément parce que rétablir les accents fait partie du travail attendu et ne doit pas compter comme une altération. Le décompte se fait en **sac de mots** et non en ensemble : un modèle qui répéterait dix fois un mot présent au brut ne doit pas passer pour fidèle.
 
 Hors des bornes, la correction est refusée et le brut inséré. Le fait est signalé à l'écran par un état `notice` distinct de `failed` — une correction écartée n'est pas une panne, mais l'utilisateur doit le savoir.
 
@@ -188,6 +192,6 @@ Deux conséquences, toutes deux traitées dans `make_app.sh` :
 
 ## Ce qui n'est pas persisté, volontairement
 
-Ni l'audio, ni les transcriptions ne touchent le disque. L'historique vit en mémoire et disparaît à la fermeture. Le fichier temporaire transmis au démon Whisper est supprimé immédiatement après lecture.
+Ni l'audio, ni les transcriptions ne touchent le disque. L'historique vit en mémoire et disparaît à la fermeture. L'audio Whisper traverse le tube en PCM Base64, sans fichier temporaire.
 
 C'est une contrainte de conception liée au secret professionnel de l'article 66-5 de la loi du 31 décembre 1971, pas une simplification.

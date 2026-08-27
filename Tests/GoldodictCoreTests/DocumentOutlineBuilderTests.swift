@@ -32,6 +32,23 @@ struct DocumentOutlineBuilderTests {
         #expect(outline.sections[1].children.isEmpty)
     }
 
+    @Test("La reprise d'un plan continue au dernier nœud")
+    func restoringContinuesAtLastNode() {
+        var original = DocumentOutlineBuilder()
+        original.append(DocumentOutlineParser.tokenize("titre un, sur la recevabilité"))
+        original.append(DocumentOutlineParser.tokenize("grand a, le délai"))
+        original.append(DocumentOutlineParser.tokenize("la requête a été introduite tardivement."))
+
+        var restored = DocumentOutlineBuilder(restoring: original.outline)
+        restored.append(DocumentOutlineParser.tokenize("le délai de deux mois était expiré."))
+
+        let node = restored.outline.sections[0].children[0]
+        #expect(node.heading == "le délai")
+        #expect(node.blocks == [
+            .paragraph("la requête a été introduite tardivement. le délai de deux mois était expiré."),
+        ])
+    }
+
     @Test("Un grand A sans titre préalable s'attache à la racine")
     func orphanLevelTwo() {
         var builder = DocumentOutlineBuilder()

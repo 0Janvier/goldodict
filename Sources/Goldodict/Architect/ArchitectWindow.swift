@@ -19,8 +19,27 @@ final class ArchitectWindowController: NSObject, NSWindowDelegate {
 
     func open() {
         if session == nil {
-            guard let session = controller.makeArchitectSession() else { return }
-            self.session = session
+            if let recovered = ArchitectSession.recoverable() {
+                let alert = NSAlert()
+                alert.messageText = "Reprendre le document interrompu ?"
+                alert.informativeText = "Un plan dicté a été conservé après une interruption. Le reprendre évite de perdre le travail déjà transcrit."
+                alert.addButton(withTitle: "Reprendre")
+                alert.addButton(withTitle: "Abandonner")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    guard let session = controller.makeArchitectSession(
+                        restoring: recovered.snapshot,
+                        persistURL: recovered.url
+                    ) else { return }
+                    self.session = session
+                } else {
+                    ArchitectSession.discard(recovered.url)
+                    guard let session = controller.makeArchitectSession() else { return }
+                    self.session = session
+                }
+            } else {
+                guard let session = controller.makeArchitectSession() else { return }
+                self.session = session
+            }
         }
         show()
     }
@@ -43,6 +62,16 @@ final class ArchitectWindowController: NSObject, NSWindowDelegate {
         window?.contentView = NSHostingView(rootView: ArchitectView(session: session))
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard let session, !session.outline.isEmpty, !session.exported else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Fermer le document dicté ?"
+        alert.informativeText = "Le plan en cours sera effacé. Exportez-le d'abord si vous voulez le conserver."
+        alert.addButton(withTitle: "Continuer la dictée")
+        alert.addButton(withTitle: "Fermer et effacer")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     /// La fermeture met fin à la session : le moteur et le micro sont rendus,
@@ -174,7 +203,7 @@ struct ArchitectView: View {
                     .foregroundStyle(.orange)
             }
 
-            Text("Le plan en cours est conservé sur ce Mac le temps de la session, puis effacé à l'export ou à la fermeture.")
+            Text("Le plan est écrit sur ce Mac pendant la dictée. Un crash propose de le reprendre. Il s'efface à l'export, ou si vous fermez en le refusant.")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
         }
@@ -188,6 +217,7 @@ struct ArchitectView: View {
         do {
             let title = url.deletingPathExtension().lastPathComponent
             try session.exportDocx(title: title).write(to: url)
+            session.markExported()
             exportFailure = nil
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {

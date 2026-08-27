@@ -7,10 +7,16 @@ import Foundation
 /// semblait expiré », et la nuance échappe à une relecture rapide. Dans un écrit
 /// judiciaire, la conséquence n'est pas stylistique.
 ///
-/// Deux mesures, calculées sur les mots normalisés (sans casse ni diacritiques) :
-/// la part des mots du texte corrigé qui figuraient déjà dans le brut, et le
-/// rapport des longueurs. Hors des bornes, la correction est refusée et le texte
-/// brut conservé.
+/// Trois mesures, dans cet ordre :
+///
+/// 1. La part des mots du corrigé déjà présents dans le brut (sac de mots).
+/// 2. Le rapport des longueurs.
+/// 3. L'alignement : une substitution d'un mot porteur — « était » / « semblait » —
+///    est refusée même si le sac de mots reste dans les bornes. Les accords
+///    (« était » / « étaient ») et les mots-outils courts (« le » / « la ») passent.
+///
+/// Les mots sont normalisés sans casse ni diacritiques : rétablir les accents
+/// fait partie du travail attendu et ne doit pas compter comme une altération.
 public struct CorrectionGuard: Sendable {
 
     public struct Thresholds: Equatable, Sendable {
@@ -92,6 +98,15 @@ public struct CorrectionGuard: Sendable {
             )
         }
 
+        if let substitution = Self.meaningSubstitution(raw: rawWords, corrected: correctedWords) {
+            return Verdict(
+                accepted: false,
+                retention: retention,
+                lengthRatio: lengthRatio,
+                reason: "substitution de sens (\(substitution))"
+            )
+        }
+
         return Verdict(accepted: true, retention: retention, lengthRatio: lengthRatio, reason: nil)
     }
 
@@ -104,5 +119,63 @@ public struct CorrectionGuard: Sendable {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .filter { !$0.isEmpty }
+    }
+
+    /// Première substitution de mot porteur relevée par alignement, ou `nil`.
+    static func meaningSubstitution(raw: [String], corrected: [String]) -> String? {
+        let anchors = longestCommonSubsequence(raw, corrected)
+        var i = 0, j = 0
+        for (ai, aj) in anchors + [(raw.count, corrected.count)] {
+            let removed = Array(raw[i..<ai])
+            let inserted = Array(corrected[j..<aj])
+            if let pair = zip(removed, inserted).first(where: { !isAgreementOrInflection($0, $1) }) {
+                return "« \(pair.0) » → « \(pair.1) »"
+            }
+            i = ai + 1
+            j = aj + 1
+        }
+        return nil
+    }
+
+    /// Accords et flexions du même mot : « était / étaient », « expire / expires ».
+    /// Les mots-outils de trois lettres ou moins (« le / la ») passent aussi —
+    /// ce sont des accords, pas des glissements de sens.
+    static func isAgreementOrInflection(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        if a.count <= 3, b.count <= 3 { return true }
+        let shorter = a.count <= b.count ? a : b
+        let longer = a.count <= b.count ? b : a
+        if longer.hasPrefix(shorter), longer.count - shorter.count <= 3 { return true }
+        return commonPrefixLength(a, b) >= 4
+    }
+
+    private static func commonPrefixLength(_ a: String, _ b: String) -> Int {
+        zip(a, b).prefix(while: { $0 == $1 }).count
+    }
+
+    /// Indices appariés (i, j) de la plus longue sous-suite commune.
+    private static func longestCommonSubsequence(_ a: [String], _ b: [String]) -> [(Int, Int)] {
+        guard !a.isEmpty, !b.isEmpty else { return [] }
+        var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in stride(from: a.count - 1, through: 0, by: -1) {
+            for j in stride(from: b.count - 1, through: 0, by: -1) {
+                table[i][j] = a[i] == b[j]
+                    ? table[i + 1][j + 1] + 1
+                    : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        var result: [(Int, Int)] = []
+        var i = 0, j = 0
+        while i < a.count, j < b.count {
+            if a[i] == b[j] {
+                result.append((i, j))
+                i += 1; j += 1
+            } else if table[i + 1][j] >= table[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return result
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import GoldodictCore
 
 /// Correcteur fondé sur le modèle de langue embarqué de macOS 26.
 ///
@@ -92,7 +93,15 @@ private actor SessionHolder {
                 to: CorrectionPrompt.prompt(for: text),
                 options: options
             )
-            return CorrectionPrompt.stripDecoration(from: response.content)
+            let raw = response.content
+            let cleaned = CorrectionPrompt.stripDecoration(from: raw)
+            if CorrectionPrompt.containsToolTrace(raw) {
+                // Une session qui a laissé filer une trace d'outil a le transcript
+                // pollué : la suivante recollerait le même préfixe. On la jette.
+                sessions[key] = nil
+                Log.engine.notice("correcteur Apple : trace d'outil écartée, session renouvelée")
+            }
+            return cleaned
         } catch let error as LanguageModelSession.GenerationError {
             // Une session ayant refusé un contenu reste marquée : on la jette pour
             // que la dictée suivante reparte sur une session saine.

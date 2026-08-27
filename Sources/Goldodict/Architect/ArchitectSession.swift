@@ -42,11 +42,12 @@ final class ArchitectSession {
     /// Périphérique écouté au moment où le silence a été déclaré.
     private(set) var inputDeviceName: String?
 
-    private let engine: WhisperMLXEngine
+    private let engine: any TranscriptionEngine
     private let corrector: CorrectionService
     private let pipeline: TranscriptPipeline
     private let contextualStrings: [String]
     private let locale: Locale
+    private let inputDeviceUID: String?
     private let onRelease: () -> Void
 
     private var capture: AudioCapture?
@@ -59,13 +60,18 @@ final class ArchitectSession {
     private var watching: Task<Void, Never>?
 
     private let sessionID = UUID()
+    private let persistFileURL: URL
+    private(set) var exported = false
 
     init(
-        engine: WhisperMLXEngine,
+        engine: any TranscriptionEngine,
         corrector: CorrectionService,
         pipeline: TranscriptPipeline,
         contextualStrings: [String],
         locale: Locale,
+        inputDeviceUID: String? = nil,
+        snapshot: ArchitectSnapshot? = nil,
+        persistURL: URL? = nil,
         onRelease: @escaping () -> Void
     ) {
         self.engine = engine
@@ -73,11 +79,45 @@ final class ArchitectSession {
         self.pipeline = pipeline
         self.contextualStrings = contextualStrings
         self.locale = locale
+        self.inputDeviceUID = inputDeviceUID
         self.onRelease = onRelease
+        self.persistFileURL = persistURL
+            ?? Self.sessionsDirectory.appendingPathComponent("\(sessionID.uuidString).json")
+        if let snapshot {
+            builder = DocumentOutlineBuilder(restoring: snapshot.outline)
+            outline = snapshot.outline
+            segmentCount = snapshot.segmentCount
+            startedAt = snapshot.startedAt
+        }
     }
 
-    var persistedURL: URL {
-        Self.sessionsDirectory.appendingPathComponent("\(sessionID.uuidString).json")
+    var persistedURL: URL { persistFileURL }
+
+    func markExported() {
+        exported = true
+    }
+
+    /// Dernier plan non vide encore sur le disque, le plus récent d'abord.
+    static func recoverable() -> (url: URL, snapshot: ArchitectSnapshot)? {
+        let manager = FileManager.default
+        guard let files = try? manager.contentsOfDirectory(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return nil }
+
+        let candidates: [(url: URL, snapshot: ArchitectSnapshot, date: Date)] = files.compactMap { file in
+            guard let data = try? Data(contentsOf: file),
+                  let snapshot = try? ArchitectSnapshot.decode(from: data),
+                  !snapshot.outline.isEmpty else { return nil }
+            let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            return (file, snapshot, date)
+        }
+        return candidates.max(by: { $0.date < $1.date }).map { ($0.url, $0.snapshot) }
+    }
+
+    static func discard(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
     }
 
     private static var sessionsDirectory: URL {
@@ -119,6 +159,7 @@ final class ArchitectSession {
             }
 
             let capture = AudioCapture()
+            capture.preferredDeviceUID = inputDeviceUID
             capture.onBuffer = { [collector, weak capture] buffer in
                 // Thread audio temps réel : uniquement des gestes bon marché.
                 let duration = Double(buffer.frameLength) / buffer.format.sampleRate
@@ -279,8 +320,13 @@ final class ArchitectSession {
         do {
             let directory = Self.sessionsDirectory
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(outline)
-            try data.write(to: persistedURL, options: .atomic)
+            let snapshot = ArchitectSnapshot(
+                outline: outline,
+                segmentCount: segmentCount,
+                startedAt: startedAt
+            )
+            let data = try JSONEncoder().encode(snapshot)
+            try data.write(to: persistFileURL, options: .atomic)
         } catch {
             Log.architect.error("persistance : \(error.localizedDescription, privacy: .public)")
         }
