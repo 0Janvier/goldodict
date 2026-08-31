@@ -15,6 +15,7 @@ SIGN_ID="${GOLDODICT_SIGN_ID:-Developer ID Application: Sztulman Marc (6MTBLVHJ8
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")"
 ARCH="$(uname -m)"
+[[ "$ARCH" == "arm64" ]] && ARCH="aarch64"
 DMG="$OUT_DIR/Goldodict_${VERSION}_${ARCH}.dmg"
 
 if ! codesign --verify --deep --strict "$APP" 2>/dev/null; then
