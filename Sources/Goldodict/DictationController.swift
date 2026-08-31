@@ -359,6 +359,31 @@ final class DictationController {
         }
     }
 
+    /// ⌘C depuis la fenêtre de relecture : le texte retouché est déjà dans le
+    /// presse-papiers, le collage est laissé à l'utilisateur. Sans ce chemin, la
+    /// fenêtre resterait ouverte et l'état `reviewing` bloquerait la dictée suivante.
+    func finishReviewByCopy(_ request: ReviewRequest, edited: String) {
+        let text = edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? request.text
+            : edited
+
+        if text != request.text {
+            let learned = submitStyleCorrection(
+                original: request.text,
+                corrected: text,
+                profileName: request.profileName
+            )
+            if learned > 0 {
+                Log.learning.notice("relecture : \(learned) correction(s) relevée(s)")
+            }
+        }
+
+        record(transcript: text, profileName: request.profileName)
+        request.application?.activate()
+        state = .idle
+        Log.learning.debug("relecture copiée")
+    }
+
     /// Échap ou fermeture : rien n'est collé, mais la dictée reste à
     /// l'historique — elle se récupère par « Reprendre… » ou la copie manuelle.
     func cancelReview(_ request: ReviewRequest) {
